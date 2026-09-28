@@ -78,6 +78,68 @@ def test_wall_clock_must_be_tz_aware(tmp_path: Path) -> None:
 
 
 @pytest.mark.F9
+def test_wall_clock_must_return_a_datetime(tmp_path: Path) -> None:
+    logger = JsonlLogger(tmp_path / "run.jsonl", wall_clock=lambda: "not a datetime")
+    with pytest.raises(ContractViolation):
+        logger.write(_entry(0))
+
+
+@pytest.mark.F9
+def test_seq_not_advanced_after_a_rejected_write(tmp_path: Path) -> None:
+    logger = JsonlLogger(tmp_path / "run.jsonl", wall_clock=lambda: PLACEHOLDER)
+    bad_clock_calls = {"n": 0}
+
+    def _flaky_clock() -> datetime:
+        bad_clock_calls["n"] += 1
+        if bad_clock_calls["n"] == 1:
+            return datetime(2026, 9, 28, 12, 0, 0)  # naive -- rejected
+        return PLACEHOLDER
+
+    logger = JsonlLogger(tmp_path / "run.jsonl", wall_clock=_flaky_clock)
+    with pytest.raises(ContractViolation):
+        logger.write(_entry(0))
+    logger.write(_entry(0))  # retried with the same seq must still succeed
+    lines = (tmp_path / "run.jsonl").read_text(encoding="utf-8").splitlines()
+    assert len(lines) == 1
+
+
+@pytest.mark.F9
+def test_run_id_must_stay_the_same_across_one_logger_instance(tmp_path: Path) -> None:
+    logger = JsonlLogger(tmp_path / "run.jsonl", wall_clock=lambda: PLACEHOLDER)
+    logger.write(_entry(0, run_id="run-1"))
+    with pytest.raises(ContractViolation):
+        logger.write(_entry(1, run_id="run-2"))
+
+
+@pytest.mark.F9
+def test_t_wall_optional_at_construction_is_still_stamped(tmp_path: Path) -> None:
+    # LogEntry.t_wall defaults to None (ISSUES.md, 2026-09-28 CONTRACT) --
+    # a caller need not supply the placeholder explicitly.
+    stamped_at = datetime(2026, 9, 28, 12, 0, 0, tzinfo=UTC)
+    logger = JsonlLogger(tmp_path / "run.jsonl", wall_clock=lambda: stamped_at)
+    entry = LogEntry(
+        seq=0, run_id="run-1", t_video=1.0, event_type="run_started", detail="Run started"
+    )
+    assert entry.t_wall is None
+    logger.write(entry)
+    row = json.loads((tmp_path / "run.jsonl").read_text(encoding="utf-8"))
+    assert datetime.fromisoformat(row["t_wall"].replace("Z", "+00:00")) == stamped_at
+
+
+@pytest.mark.F9
+def test_lines_use_bare_newline_not_crlf(tmp_path: Path) -> None:
+    # A Windows text-mode default would translate "\n" to "\r\n" on write,
+    # corrupting the JSON-Lines-per-line on-disk format.
+    path = tmp_path / "run.jsonl"
+    logger = JsonlLogger(path, wall_clock=lambda: PLACEHOLDER)
+    logger.write(_entry(0))
+    logger.write(_entry(1))
+    raw = path.read_bytes()
+    assert b"\r" not in raw
+    assert raw.count(b"\n") == 2
+
+
+@pytest.mark.F9
 def test_one_line_per_event_never_per_frame(tmp_path: Path) -> None:
     logger = JsonlLogger(tmp_path / "run.jsonl", wall_clock=lambda: PLACEHOLDER)
     for seq in range(5):
