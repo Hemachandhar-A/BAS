@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>BAS Dashboard</title>
+<style>/*__STYLE_CSS__*/</style>
+</head>
+<body>
+<!--
+  Single operator-facing page (essential-features.md #12): live feed,
+  current/next step, step list with status chips, alert history, run
+  start/reset. Reference display only -- voice is the primary channel
+  (F8). No CDN, no web fonts, no non-local resources: everything on this
+  page is inlined at server start from style.css/app.js (server/app.py's
+  _render_index), so the URL map stays exactly API_ROUTES.
+-->
+<header class="topbar">
+  <h1>BAS -- Sample Transfer</h1>
+  <dl class="status-line" id="status-line">
+    <div><dt>Run</dt><dd id="run-id">--</dd></div>
+    <div><dt>State</dt><dd id="run-state">--</dd></div>
+    <div><dt>Feed</dt><dd id="feed-ok">--</dd></div>
+    <div><dt>FPS</dt><dd id="fps">--</dd></div>
+  </dl>
+  <div class="controls">
+    <button id="btn-start" type="button">Start</button>
+    <button id="btn-reset" type="button">Reset</button>
+  </div>
+</header>
+
+<main class="layout">
+  <section class="video-pane">
+    <img id="video" src="/video_feed" alt="Live camera feed" width="640" height="480">
+  </section>
+
+  <section class="side-pane">
+    <div class="guidance" id="guidance">
+      <p class="guidance-now">Now: <span id="expected-step">--</span></p>
+      <p class="guidance-next">Next: <span id="next-step-say">--</span></p>
+    </div>
+
+    <h2>Steps</h2>
+    <ol class="step-list" id="step-list"></ol>
+
+    <h2>Alerts</h2>
+    <ul class="alert-list" id="alert-list"></ul>
+  </section>
+</main>
+
+<p class="error" id="error-banner" hidden></p>
+
+<script>/*__APP_JS__*/</script>
+</body>
+</html>
