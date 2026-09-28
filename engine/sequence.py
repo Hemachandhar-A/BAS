@@ -28,12 +28,17 @@ from contracts import (
 class SequenceEngine:
     """Implements ``contracts.Engine``. Constructed as
     ``SequenceEngine(experiment, config)``; reusable across runs by calling
-    ``start()`` again (used by the runtime's ``/api/run/reset``)."""
+    ``finish()`` (or letting the run complete on its own) and then
+    ``start()`` again (used by the runtime's ``/api/run/reset``, Plan
+    5.6). ``start()`` while a run is already in progress is a caller bug
+    -- it would silently discard that run's completion -- and raises
+    ``ContractViolation`` instead."""
 
     def __init__(self, experiment: ExperimentDefinition, config: RuntimeConfig) -> None:
         self._experiment = experiment
         self._config = config
         self._canonical_ids: list[str] = experiment.step_ids
+        self._step_index: dict[str, int] = {sid: i for i, sid in enumerate(self._canonical_ids)}
         self._last_id: str = self._canonical_ids[-1]
         self._display_names: dict[str, str] = {s.step_id: s.display_name for s in experiment.steps}
         self._say: dict[str, str] = {s.step_id: s.say for s in experiment.steps}
@@ -45,6 +50,14 @@ class SequenceEngine:
         self._run_id: str = ""
 
     def start(self, t: float, run_id: str = "") -> None:
+        # t is part of the Engine protocol signature but unused: start()
+        # emits no event (essential-features.md #8 -- the runtime speaks
+        # the first step and writes run_started, not the engine).
+        if self.run_state == "running":
+            raise ContractViolation(
+                "start() called while a run is already in progress; "
+                "call finish() first (IMPLEMENTATION_PLAN.md 5.6)"
+            )
         self._status = dict.fromkeys(self._canonical_ids, "pending")
         self._t_confirmed = dict.fromkeys(self._canonical_ids, None)
         self._observed = []
@@ -88,12 +101,11 @@ class SequenceEngine:
             newly_confirmed_last = o == self._last_id
 
         elif status_o == "pending":
+            o_index = self._step_index[o]
             skipped_ids = [
                 sid
                 for sid in self._canonical_ids
-                if sid != o
-                and self._status[sid] == "pending"
-                and self._canonical_ids.index(sid) < self._canonical_ids.index(o)
+                if self._status[sid] == "pending" and self._step_index[sid] < o_index
             ]
             for sid in skipped_ids:
                 self._status[sid] = "skipped"
@@ -150,7 +162,7 @@ class SequenceEngine:
             )
 
         if newly_confirmed_last:
-            summary = self._build_summary(t=event.t, aborted=False)
+            summary = self._build_summary(aborted=False)
             speak = (
                 "Experiment complete"
                 if summary.all_steps_done
@@ -174,7 +186,7 @@ class SequenceEngine:
     def finish(self, t: float) -> list[EngineEvent]:
         if self.run_state != "running":
             return []
-        summary = self._build_summary(t=t, aborted=True)
+        summary = self._build_summary(aborted=True)
         self.run_state = "completed"
         pending = self._first_pending()
         return [
@@ -205,15 +217,15 @@ class SequenceEngine:
                 return sid
         return None
 
-    def _build_summary(self, t: float, aborted: bool) -> RunSummary:
-        del t  # RunSummary carries no completion timestamp of its own
+    def _build_summary(self, aborted: bool) -> RunSummary:
         skipped_ids = [sid for sid in self._canonical_ids if self._status[sid] == "skipped"]
         late_ids = [sid for sid in self._canonical_ids if self._status[sid] == "completed_late"]
         pending_ids = [sid for sid in self._canonical_ids if self._status[sid] == "pending"]
         all_steps_done = not skipped_ids and not pending_ids
+        # n >= 1 always: ExperimentDefinition.steps has min_length=1.
         n = len(self._canonical_ids)
-        distance = DamerauLevenshtein.distance(self._canonical_ids, self._observed) if n else 0
-        pos = 1.0 - min(distance / n, 1.0) if n else 1.0
+        distance = DamerauLevenshtein.distance(self._canonical_ids, self._observed)
+        pos = 1.0 - min(distance / n, 1.0)
         return RunSummary(
             run_id=self._run_id,
             pos=pos,
