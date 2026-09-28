@@ -1,0 +1,96 @@
+{
+  "experiment_id": "sample_transfer",
+  "version": "0-draft",
+  "classes": [
+    "outer_box",
+    "tray",
+    "red_box",
+    "yellow_box",
+    "start_button"
+  ],
+  "steps": [
+    {
+      "step_id": "red_out",
+      "display_name": "Red sample out",
+      "say": "Take out the red sample",
+      "when": [
+        {
+          "type": "outside",
+          "label": "red_box",
+          "container": "outer_box"
+        }
+      ]
+    },
+    {
+      "step_id": "red_in_tray",
+      "display_name": "Red sample in tray",
+      "say": "Place red in the tray",
+      "when": [
+        {
+          "type": "inside",
+          "label": "red_box",
+          "container": "tray"
+        }
+      ]
+    },
+    {
+      "step_id": "yellow_out",
+      "display_name": "Yellow sample out",
+      "say": "Take out the yellow sample",
+      "when": [
+        {
+          "type": "outside",
+          "label": "yellow_box",
+          "container": "outer_box"
+        }
+      ]
+    },
+    {
+      "step_id": "yellow_in_tray",
+      "display_name": "Yellow sample in tray",
+      "say": "Place yellow in the tray",
+      "when": [
+        {
+          "type": "inside",
+          "label": "yellow_box",
+          "container": "tray"
+        }
+      ]
+    },
+    {
+      "step_id": "start_pressed",
+      "display_name": "Start pressed",
+      "say": "Press the start button",
+      "when": [
+        {
+          "type": "hand_touching",
+          "label": "start_button"
+        }
+      ]
+    },
+    {
+      "step_id": "red_stowed",
+      "display_name": "Red sample stowed",
+      "say": "Stow the red sample",
+      "when": [
+        {
+          "type": "inside",
+          "label": "red_box",
+          "container": "outer_box"
+        }
+      ]
+    },
+    {
+      "step_id": "yellow_stowed",
+      "display_name": "Yellow sample stowed",
+      "say": "Stow the yellow sample",
+      "when": [
+        {
+          "type": "inside",
+          "label": "yellow_box",
+          "container": "outer_box"
+        }
+      ]
+    }
+  ]
+}
