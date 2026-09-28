@@ -295,11 +295,13 @@ def test_router_start_and_process_frame_are_serialized_across_threads(
 
     worker = threading.Thread(target=_hammer_frames, daemon=True)
     worker.start()
-    for _ in range(20):
-        router.reset(t=0.0)
-        router.start(t=0.0)
-    stop.set()
-    worker.join(timeout=5.0)
+    try:
+        for _ in range(20):
+            router.reset(t=0.0)
+            router.start(t=0.0)
+    finally:
+        stop.set()
+        worker.join(timeout=5.0)
 
     assert errors == []
     assert router.run_state == "running"

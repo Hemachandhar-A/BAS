@@ -75,6 +75,10 @@ class _RecordingPerception:
 
 
 def _wait_until_stopped(loop: RuntimeLoop, timeout: float = 5.0) -> None:
+    """Raises on timeout. Callers must still reach ``loop.stop()`` even
+    then (wrap in try/finally) -- otherwise a genuine bug that hangs the
+    loop would also leak its daemon threads for the rest of the test
+    session instead of just failing this one test cleanly."""
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
         if loop.stopped:
@@ -117,8 +121,10 @@ def test_capture_and_inference_threads_process_frames_in_order_and_stop_on_exhau
     loop = RuntimeLoop(source, perception, router, RuntimeConfig(target_fps=1000.0), tmp_path)
 
     loop.start_threads()
-    _wait_until_stopped(loop)
-    loop.stop()
+    try:
+        _wait_until_stopped(loop)
+    finally:
+        loop.stop()
 
     assert source.closed is True
     # Strictly increasing (never the same frame_id twice, per "skip if same
@@ -140,8 +146,10 @@ def test_perception_exception_skips_that_frame_and_the_loop_keeps_going(
 
     with caplog.at_level(logging.WARNING, logger="runtime.loop"):
         loop.start_threads()
-        _wait_until_stopped(loop)
-        loop.stop()
+        try:
+            _wait_until_stopped(loop)
+        finally:
+            loop.stop()
 
     assert 2 in perception.attempted  # the failing frame was still attempted
     assert perception.attempted[-1] == 4  # and the loop carried on past it
@@ -225,7 +233,9 @@ def test_router_contract_violation_stops_the_loop_observably_via_fatal_error(
     loop = RuntimeLoop(_NeverEndingSource(), FakePerception([]), router, runtime_config, tmp_path)
 
     loop.start_threads()
-    _wait_until_stopped(loop)
-    loop.stop()
+    try:
+        _wait_until_stopped(loop)
+    finally:
+        loop.stop()
 
     assert isinstance(loop.fatal_error, ContractViolation)
