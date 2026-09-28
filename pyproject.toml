@@ -1,0 +1,81 @@
+[project]
+name = "sih26174-bas"
+version = "0.1.0"
+description = "Offline, standalone on-board experiment monitor (ISRO PS 26174, SIH 2026)"
+requires-python = "==3.11.*"
+readme = "README.md"
+dependencies = [
+    "pydantic>=2.6,<3",
+    "numpy>=1.26,<2",
+    "pyyaml>=6.0,<7",
+]
+
+[dependency-groups]
+# `run`: everything the offline demo laptop needs. rfdetr/torch are here by
+# default (PyTorch inference) until P1.5 decides between PyTorch, ONNX
+# Runtime and YOLO11n (ISSUES.md, "detector: RF-DETR-Nano vs YOLO11n").
+run = [
+    "opencv-python>=4.9,<5",
+    "mediapipe>=0.10.14,<0.11",
+    "rapidfuzz>=3.6,<4",
+    "pyttsx3>=2.90,<3",
+    "pywin32>=306; sys_platform == 'win32'",
+    "flask>=3.0,<4",
+    "cryptography>=42,<43",
+    "rfdetr>=1.10,<2",
+    "torch>=2.2,<3",
+]
+# `train`: the GPU environment only (Colab/Kaggle) -- fine-tuning the
+# detector (P1.5/P1.6, F14 stage 6).
+train = [
+    { include-group = "run" },
+    "supervision>=0.20,<1",
+    "pillow>=10.0,<11",
+]
+# `tools`: dev-time only, never installed on the demo laptop. Auto-labeling
+# (YOLO-World / Grounding DINO) and the YOLO11n fallback live here because
+# Ultralytics is AGPL-3.0 (R7; ISSUES.md).
+tools = [
+    { include-group = "run" },
+    "ultralytics>=8.3,<9",
+]
+# `dev`: every developer laptop. Runtime + test/lint tooling.
+dev = [
+    { include-group = "run" },
+    "pytest>=8.0,<9",
+    "ruff>=0.4,<1",
+]
+
+[tool.uv]
+default-groups = []
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+addopts = "--import-mode=importlib"
+markers = [
+    "F1: video ingestion",
+    "F2: object detection",
+    "F3: hand/pose tracking",
+    "F4: hand-object interaction",
+    "F5: sequence engine",
+    "F6: skip / out-of-order detection",
+    "F7: voice alerts",
+    "F8: next-step suggestion",
+    "F9: structured log",
+    "F10: video streaming",
+    "F11: local video storage",
+    "F12: GUI dashboard",
+    "F13: reliability layer",
+    "F14: dataset generation pipeline",
+    "gold_symbolic: fast symbolic golden tests against the fixture experiment, no models",
+    "gold_video: cached-replay golden tests against the real experiment",
+    "slow: slow tests excluded from --quick",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]

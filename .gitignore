@@ -1,0 +1,34 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+
+# uv / venv
+.venv/
+venv/
+
+# Secrets
+.env
+
+# Derived / large data (Part 4: git-ignored directories)
+data/
+runs_out/
+weights/*
+!weights/.gitkeep
+!weights/MANIFEST.json
+runs/*/video.mp4
+runs/*/*.avi
+runs/*/*.mp4
+
+# TLS
+*.pem
+*.key
+*.crt
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
