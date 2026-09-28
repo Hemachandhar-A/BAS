@@ -39,6 +39,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from contracts import (
+    ContractViolation,
     Engine,
     EngineEvent,
     ExperimentDefinition,
@@ -126,7 +127,17 @@ class Router:
     caught here: they are contract violations, not per-frame perception
     noise, and AGENTS.md rule "ContractViolation is raised, never coerced"
     (essential-features.md section 0) applies. Only ``RuntimeLoop`` catches
-    (around the ``Perception.process`` call specifically)."""
+    (around the ``Perception.process`` call specifically, plus a fatal-error
+    backstop around everything else -- see its docstring).
+
+    Thread-safe: every public method takes an internal ``RLock`` (reentrant
+    so ``process_perception_frame`` can call ``process_state_event``
+    without deadlocking itself). This matters once a run-control caller
+    (``RuntimeLoop.start_run``/``reset_run``, and eventually P2.5's Flask
+    ``POST /api/run/start``/``/reset`` handlers) runs on a different thread
+    than the inference loop that calls ``process_perception_frame`` --
+    essential-features.md section 0 explicitly puts run control and the
+    inference loop on different threads."""
 
     def __init__(
         self,
@@ -156,58 +167,72 @@ class Router:
         self._run_id: str | None = None
         self._pending_run_id = run_id_factory()
         self._idle_armed = True
+        self._lock = threading.RLock()
 
     @property
     def run_id(self) -> str | None:
-        return self._run_id if not self._idle_armed else self._pending_run_id
+        with self._lock:
+            return self._run_id if not self._idle_armed else self._pending_run_id
 
     @property
     def run_state(self) -> RunState:
-        if self._idle_armed:
-            return "idle"
-        return self._engine.run_state
+        with self._lock:
+            if self._idle_armed:
+                return "idle"
+            return self._engine.run_state
 
     def start(self, t: float) -> str:
-        run_id = self._pending_run_id
-        self._run_id = run_id
-        self._log_sink = JsonlLogger(self._log_dir / f"{run_id}.jsonl", self._wall_clock)
-        self._seq = 0
-        if self._tracker is not None:
-            self._tracker.reset()
-        self._engine.start(t, run_id=run_id)
-        self._idle_armed = False
-        self._write_runtime_event("run_started", t, f"Run started: {run_id}")
-        if self._runtime_config.narrate_next_step and self._experiment.steps:
-            self._speaker.say(self._experiment.steps[0].say, "info")
-        return run_id
+        with self._lock:
+            if not self._idle_armed:
+                raise ContractViolation(
+                    "Router.start() called while a run is already active "
+                    "(idle_armed=False); call reset() first"
+                )
+            run_id = self._pending_run_id
+            self._run_id = run_id
+            self._log_sink = JsonlLogger(self._log_dir / f"{run_id}.jsonl", self._wall_clock)
+            self._seq = 0
+            if self._tracker is not None:
+                self._tracker.reset()
+            self._engine.start(t, run_id=run_id)
+            self._idle_armed = False
+            self._write_runtime_event("run_started", t, f"Run started: {run_id}")
+            if self._runtime_config.narrate_next_step and self._experiment.steps:
+                self._speaker.say(self._experiment.steps[0].say, "info")
+            return run_id
 
     def reset(self, t: float) -> str:
-        if self._engine.run_state == "running":
-            self._dispatch(self._engine.finish(t))
-        self._pending_run_id = self._run_id_factory()
-        self._idle_armed = True
-        return self._pending_run_id
+        with self._lock:
+            if self._engine.run_state == "running":
+                self._dispatch(self._engine.finish(t))
+            self._pending_run_id = self._run_id_factory()
+            self._idle_armed = True
+            return self._pending_run_id
 
     def process_perception_frame(self, frame: PerceptionFrame) -> None:
-        if self._tracker is None:
-            raise RuntimeError("Router.process_perception_frame requires a tracker")
-        if self.run_state != "running":
-            return
-        for state_event in self._tracker.update(frame):
-            self.process_state_event(state_event)
+        with self._lock:
+            if self._tracker is None:
+                raise ContractViolation("Router.process_perception_frame requires a tracker")
+            if self.run_state != "running":
+                return
+            for state_event in self._tracker.update(frame):
+                self.process_state_event(state_event)
 
     def process_state_event(self, event: StateEvent) -> None:
-        if self.run_state != "running":
-            return
-        self._dispatch(self._engine.on_state_event(event))
+        with self._lock:
+            if self.run_state != "running":
+                return
+            self._dispatch(self._engine.on_state_event(event))
 
     def write_feed_lost(self, t_video: float, detail: str) -> None:
-        if self.run_state == "running":
-            self._write_runtime_event("feed_lost", t_video, detail)
+        with self._lock:
+            if self.run_state == "running":
+                self._write_runtime_event("feed_lost", t_video, detail)
 
     def write_feed_restored(self, t_video: float, detail: str) -> None:
-        if self.run_state == "running":
-            self._write_runtime_event("feed_restored", t_video, detail)
+        with self._lock:
+            if self.run_state == "running":
+                self._write_runtime_event("feed_restored", t_video, detail)
 
     def _dispatch(self, events: list[EngineEvent]) -> None:
         for event in events:
@@ -289,10 +314,12 @@ class RuntimeLoop:
         self._capture_thread: threading.Thread | None = None
         self._inference_thread: threading.Thread | None = None
         self._recorder: Recorder | None = None
+        self._control_lock = threading.Lock()
 
         self._last_captured_at: float | None = None  # monotonic
         self._last_frame_t: float = 0.0
         self._feed_ok = True
+        self._fatal_error: BaseException | None = None
 
     @property
     def feed_ok(self) -> bool:
@@ -302,23 +329,42 @@ class RuntimeLoop:
     def stopped(self) -> bool:
         return self._stop_event.is_set()
 
+    @property
+    def fatal_error(self) -> BaseException | None:
+        """Set when the inference thread stopped itself because of an
+        unexpected (non-perception) exception -- e.g. a ``ContractViolation``
+        from ``StateTracker``/``Engine``/``LogSink`` -- rather than because
+        the source was exhausted or ``stop()`` was called. ``stopped`` is
+        ``True`` in both cases; this distinguishes them."""
+        return self._fatal_error
+
     def start_run(self, t: float) -> str:
-        run_id = self._router.start(t)
-        recorder = self._recorder_factory(
-            self._video_dir / f"{run_id}.avi", self._runtime_config.target_fps
-        )
-        recorder.open()
-        self._recorder = recorder
-        return run_id
+        with self._control_lock:
+            run_id = self._router.start(t)
+            recorder = self._recorder_factory(
+                self._video_dir / f"{run_id}.avi", self._runtime_config.target_fps
+            )
+            recorder.open()
+            self._recorder = recorder
+            return run_id
 
     def reset_run(self, t: float) -> str:
-        if self._recorder is not None:
-            self._recorder.close()
-            self._recorder = None
-        return self._router.reset(t)
+        with self._control_lock:
+            if self._recorder is not None:
+                self._recorder.close()
+                self._recorder = None
+            return self._router.reset(t)
 
     def start_threads(self) -> None:
+        if (self._capture_thread is not None and self._capture_thread.is_alive()) or (
+            self._inference_thread is not None and self._inference_thread.is_alive()
+        ):
+            raise ContractViolation(
+                "RuntimeLoop.start_threads() called while the previous threads are "
+                "still running; call stop() first"
+            )
         self._stop_event.clear()
+        self._fatal_error = None
         self._last_captured_at = self._clock()
         self._capture_thread = threading.Thread(target=self._capture_loop, daemon=True)
         self._inference_thread = threading.Thread(target=self._inference_loop, daemon=True)
@@ -331,9 +377,10 @@ class RuntimeLoop:
             self._capture_thread.join(timeout=5.0)
         if self._inference_thread is not None:
             self._inference_thread.join(timeout=5.0)
-        if self._recorder is not None:
-            self._recorder.close()
-            self._recorder = None
+        with self._control_lock:
+            if self._recorder is not None:
+                self._recorder.close()
+                self._recorder = None
         try:
             self._source.close()
         except Exception:
@@ -372,29 +419,48 @@ class RuntimeLoop:
                 continue
             next_deadline = now + period
 
-            frame = self._store.get()
-            if frame is None or frame.frame_id == last_frame_id:
-                self._check_feed_timeout(now)
-                if self._source.exhausted:
-                    # The source has nothing left, and the frame current in
-                    # the store (if any) was already processed on a prior
-                    # iteration -- safe to stop.
-                    self._stop_event.set()
-                    return
-                continue
-            last_frame_id = frame.frame_id
-            self._on_frame_captured(now, frame.t)
-
             try:
-                pframe = self._perception.process(frame)
-            except Exception:
-                logger.warning(
-                    "RuntimeLoop: perception failed on frame %d, skipping",
-                    frame.frame_id,
+                frame = self._store.get()
+                if frame is None or frame.frame_id == last_frame_id:
+                    self._check_feed_timeout(now)
+                    if self._source.exhausted:
+                        # The source has nothing left, and the frame current
+                        # in the store (if any) was already processed on a
+                        # prior iteration -- safe to stop.
+                        self._stop_event.set()
+                        return
+                    continue
+                last_frame_id = frame.frame_id
+                self._on_frame_captured(now, frame.t)
+
+                try:
+                    pframe = self._perception.process(frame)
+                except Exception:
+                    # Routine, expected: a single bad frame in perception
+                    # never crashes the loop (essential-features.md section
+                    # 0, "Errors").
+                    logger.warning(
+                        "RuntimeLoop: perception failed on frame %d, skipping",
+                        frame.frame_id,
+                        exc_info=True,
+                    )
+                    continue
+                self._router.process_perception_frame(pframe)
+            except Exception as exc:
+                # Anything else (StateTracker/Engine/LogSink -- a genuine
+                # ContractViolation, or the feed watchdog's own log write)
+                # is NOT routine per-frame noise: it means tracking is now
+                # in an unknown state, so continuing could silently miss a
+                # real deviation. Stop observably (fatal_error/stopped)
+                # rather than let the thread die silently as a zombie that
+                # never processes another frame again.
+                logger.error(
+                    "RuntimeLoop: unexpected error in the inference loop, stopping",
                     exc_info=True,
                 )
-                continue
-            self._router.process_perception_frame(pframe)
+                self._fatal_error = exc
+                self._stop_event.set()
+                return
 
     def _on_frame_captured(self, now: float, frame_t: float) -> None:
         self._last_captured_at = now

@@ -57,7 +57,14 @@ def main() -> int:
     )
 
     source = open_source(runtime_config.source)
-    perception = PerceptionPipeline(perception_config)
+    try:
+        perception = PerceptionPipeline(perception_config)
+    except Exception:
+        # Nothing has claimed ownership of `source` yet (no RuntimeLoop
+        # exists to close it in its own cleanup), so this is the one spot
+        # that must close it itself rather than leak the camera/file handle.
+        source.close()
+        raise
     tracker = StateTracker(experiment, perception_config)
     engine = SequenceEngine(experiment, runtime_config)
     speaker = TTSWorker()
@@ -72,17 +79,30 @@ def main() -> int:
 
     signal.signal(signal.SIGINT, _handle_sigint)
 
+    exit_code = 0
     loop.start_threads()
-    run_id = loop.start_run(t=0.0)
-    logger.info("dev run started: %s (Ctrl+C to stop)", run_id)
     try:
+        run_id = loop.start_run(t=0.0)
+        logger.info("dev run started: %s (Ctrl+C to stop)", run_id)
         while not stop and not loop.stopped:
             time.sleep(0.2)
+        if loop.fatal_error is not None:
+            logger.error("dev run stopped after an unexpected error: %s", loop.fatal_error)
+            exit_code = 1
+    except Exception:
+        logger.exception("scripts/dev.py: run failed")
+        exit_code = 1
     finally:
-        loop.reset_run(t=0.0)
+        # loop.stop() (which closes the source/recorder and joins the
+        # threads) must run even if start_run()/reset_run() itself failed --
+        # a failure in one shutdown step must never skip the others.
+        try:
+            loop.reset_run(t=0.0)
+        except Exception:
+            logger.warning("scripts/dev.py: reset_run failed during shutdown", exc_info=True)
         loop.stop()
         speaker.close()
-    return 0
+    return exit_code
 
 
 if __name__ == "__main__":

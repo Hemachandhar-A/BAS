@@ -17,7 +17,14 @@ from pathlib import Path
 
 import pytest
 
-from contracts import ExperimentDefinition, Frame, PerceptionConfig, PerceptionFrame, RuntimeConfig
+from contracts import (
+    ContractViolation,
+    ExperimentDefinition,
+    Frame,
+    PerceptionConfig,
+    PerceptionFrame,
+    RuntimeConfig,
+)
 from engine.sequence import SequenceEngine
 from harness.fakes import FakeFrameSource, FakePerception, make_blank_frame
 from outputs.tts import FakeSpeaker
@@ -74,6 +81,27 @@ def _wait_until_stopped(loop: RuntimeLoop, timeout: float = 5.0) -> None:
             return
         time.sleep(0.01)
     raise AssertionError("RuntimeLoop did not stop within the timeout")
+
+
+class _NeverEndingSource:
+    """A ``FrameSource`` that always has another frame -- used only to keep
+    both threads reliably alive for tests of ``start_threads()``'s
+    re-entrancy guard, so the assertion never races a source that might
+    exhaust and stop the loop on its own first."""
+
+    fps: float | None = None
+    exhausted = False
+
+    def __init__(self) -> None:
+        self._next_id = 0
+        self.closed = False
+
+    def read(self) -> Frame:
+        self._next_id += 1
+        return make_blank_frame(self._next_id, float(self._next_id))
+
+    def close(self) -> None:
+        self.closed = True
 
 
 @pytest.mark.F13
@@ -151,3 +179,53 @@ def test_feed_watchdog_logs_lost_then_restored(
     ]
     assert [entry["event_type"] for entry in lines] == ["run_started", "feed_lost", "feed_restored"]
     assert lines[2]["t_video"] == 9.0
+
+
+@pytest.mark.F13
+def test_start_threads_twice_without_stop_raises_and_leaves_the_first_loop_running(
+    experiment: ExperimentDefinition, tmp_path: Path
+) -> None:
+    router = _router(experiment, tmp_path)
+    loop = RuntimeLoop(
+        _NeverEndingSource(), FakePerception([]), router, RuntimeConfig(target_fps=1000.0), tmp_path
+    )
+    loop.start_threads()
+    try:
+        with pytest.raises(ContractViolation):
+            loop.start_threads()
+        # The guard must reject the second call before touching anything --
+        # the first pair of threads is still the one actually running.
+        assert loop.stopped is False
+    finally:
+        loop.stop()
+
+
+@pytest.mark.F13
+def test_router_contract_violation_stops_the_loop_observably_via_fatal_error(
+    experiment: ExperimentDefinition, tmp_path: Path
+) -> None:
+    """A downstream ContractViolation (StateTracker/Engine/LogSink) is not
+    routine per-frame noise like a perception failure -- it must stop the
+    loop observably (fatal_error set, stopped=True) rather than let the
+    inference thread die silently as an unnoticed zombie."""
+    runtime_config = RuntimeConfig(target_fps=1000.0)
+    # tracker=None is a deliberate misconfiguration for this test: it makes
+    # every process_perception_frame() call raise ContractViolation, giving
+    # a clean, deterministic way to exercise the fatal-error path.
+    router = Router(
+        experiment,
+        runtime_config,
+        tracker=None,
+        engine=SequenceEngine(experiment, runtime_config),
+        speaker=FakeSpeaker(),
+        log_dir=tmp_path,
+        run_id_factory=lambda: "fatal-test",
+    )
+    router.start(t=0.0)
+    loop = RuntimeLoop(_NeverEndingSource(), FakePerception([]), router, runtime_config, tmp_path)
+
+    loop.start_threads()
+    _wait_until_stopped(loop)
+    loop.stop()
+
+    assert isinstance(loop.fatal_error, ContractViolation)

@@ -48,6 +48,7 @@ class Recorder:
         self._queue: queue.Queue[Frame | None] = queue.Queue(maxsize=queue_maxsize)
         self._thread: threading.Thread | None = None
         self._writer: cv2.VideoWriter | None = None
+        self._frame_size: tuple[int, int] | None = None  # (width, height)
         self._opened = False
         self._closed = False
 
@@ -116,13 +117,27 @@ class Recorder:
                 self._release_writer()
 
     def _write(self, frame: Frame) -> None:
+        height, width = frame.image.shape[:2]
         if self._writer is None:
-            height, width = frame.image.shape[:2]
+            self._frame_size = (width, height)
             fourcc = cv2.VideoWriter_fourcc(*_FOURCC)
             writer = cv2.VideoWriter(str(self._path), fourcc, self._fps, (width, height))
             if not writer.isOpened():
                 raise OSError(f"Recorder: could not open VideoWriter at {self._path}")
             self._writer = writer
+        elif (width, height) != self._frame_size:
+            # A frame whose size doesn't match the writer opened for this
+            # run (e.g. a transient driver glitch reporting a different
+            # resolution) would otherwise corrupt or break the container --
+            # drop just this one frame rather than disabling recording for
+            # the whole run.
+            logger.warning(
+                "Recorder: frame %d has size %s, expected %s -- dropping",
+                frame.frame_id,
+                (width, height),
+                self._frame_size,
+            )
+            return
         self._writer.write(frame.image)
 
     def _release_writer(self) -> None:
