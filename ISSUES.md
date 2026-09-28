@@ -53,37 +53,40 @@ Entry format:
 - Missing: `_finite` validation on `StateEvent.t`, `EngineEvent.t`, `LogEntry.t_video` and `RunScript.fps`. Probe result: `+inf` / `NaN` are accepted there, while `PerceptionFrame.t`, `Detection.box` already reject them.
 - Why it matters: contracts.py's own convention is "reject a literal NaN/inf once, at the boundary".
 - Proposed fix at G0: apply the existing `_finite` helper to those four fields (additive, no field changes).
-- Status: OPEN
+- Status: RESOLVED at G0 -- `contracts.py` applies `FiniteFloat` (the existing `_finite` validator) to `StateEvent.t`, `EngineEvent.t`, `LogEntry.t_video` and `RunScript.fps`. Regression tests: `tests/unit/contracts/test_config_shapes.py`.
 
 ## 2026-09-28 setup CONTRACT - a typo in a YAML config key is silently ignored
 - Missing: `extra="forbid"` on `PerceptionConfig` and `RuntimeConfig`. Probe result: `hysteresis_frmes: 7` loads without error and the default (5) is used.
 - Why it matters: the whole tuning step (P2.6) writes `config/perception.yaml`; a misspelled key would quietly revert a tuned threshold to its default and nobody would notice.
 - Proposed fix at G0: `ConfigDict(frozen=True, extra="forbid")` on both models.
-- Status: OPEN
+- Status: RESOLVED at G0 -- both `PerceptionConfig` and `RuntimeConfig` in `contracts.py` use `ConfigDict(frozen=True, extra="forbid")`. Regression tests: `tests/unit/contracts/test_config_shapes.py` (`hysteresis_frmes` / `target_fp` typos are rejected).
 
 ## 2026-09-28 setup CONTRACT - `LogEntry.t_wall` is required but is stamped by the logger
 - Missing: a way to construct a `LogEntry` before the logger stamps `t_wall`.
 - Why it matters: contracts.py says wall time exists only in the logger, yet the field is mandatory at construction. Current workaround (documented in Plan 5.5): the router builds entries with `datetime(1970,1,1,tzinfo=utc)` and the logger overwrites it.
 - Proposed fix at G0: `t_wall: datetime | None = None`, keeping the timezone-aware check when set; the logger always sets it.
-- Status: OPEN
+- Status: RESOLVED at G0 -- `LogEntry.t_wall: datetime | None = None` in `contracts.py`, with a validator that still rejects a naive (non-tz-aware) value when set. The router builds entries with `t_wall=None`; `JsonlLogger` sets it via `model_copy(update=...)`. Regression tests: `tests/unit/contracts/test_config_shapes.py`.
 
 ## 2026-09-28 setup CONTRACT - the small file seams are not typed
 - Missing: Pydantic models for `config/acceptance.yaml` and the `reports/*.json` shapes (currently specified only as a table in Plan 5.8).
 - Why it matters: they are written by one person and read by another (P1 writes acceptance thresholds; P2 reads them; reports feed the PPT).
 - Proposed fix at G0: `AcceptanceConfig` (frozen, `extra="forbid"`) and a small `ReportHeader` (`generated_at`, `model_stamp`, input stamps). Report bodies may stay dicts.
-- Status: OPEN
+- Status: RESOLVED at G0 -- `contracts.py` adds `AcceptanceConfig` (with `DetectorAcceptance`/`PipelineAcceptance`/`ReplayAcceptance`/`LabelReviewAcceptance`, all frozen + `extra="forbid"`) and `ReportHeader` (`generated_at` tz-aware, `model_stamp`, `input_stamps`). Report bodies stay dicts as proposed. Regression tests: `tests/unit/contracts/test_config_shapes.py`.
 
 ## 2026-09-28 setup DECISION - operating system of the two dev laptops and the demo laptop
 - Decision needed: Windows / macOS / Linux for each machine.
 - Why it matters: TTS backend (SAPI5 / NSSpeechSynthesizer / eSpeak), webcam backend (`CAP_DSHOW` on Windows), `multiprocessing` start method, and whether shell scripts would even run. The plan already avoids bare shell scripts, but the demo machine's voice and camera must be tested on that exact machine.
 - Proposed: record the answer at G0; run the audio self-test and camera check on every machine.
 - Status: OPEN
+- Update 2026-09-28 (G0): both dev laptops (P1, P2) and the demo laptop are Windows. Webcam backend: `CAP_DSHOW`. TTS backend: SAPI5.
+- Update 2026-09-28 (P2's machine): audio self-test passed -- `pyttsx3.init()` found 3 SAPI5 voices (Microsoft David/Hazel/Zira, en-US/en-GB), `say()` + `runAndWait()` returned without raising. Camera check passed -- `cv2.VideoCapture(0, cv2.CAP_DSHOW)` opened, `read()` returned a `(480, 640, 3)` frame, but `CAP_PROP_FPS` reported `0.0` -- this confirms F1's documented fallback (measure the median inter-frame interval over the first 30 frames) is required on this hardware, not optional. Both checks were run as raw capability probes (`cv2`/`pyttsx3` directly), not through `perception.camera.open_source`, which does not exist until P1.1. P1's machine still needs to run both checks and add its own line here before G0 can close (see the sign-off entry at the end of this file).
 
 ## 2026-09-28 setup DECISION - where the detector is fine-tuned (GPU access)
 - Decision needed: who has a GPU (Colab or Kaggle notebook, a lab machine) and who runs stage 6 of the dataset pipeline.
 - Why it matters: "CPU laptop only" is a deployment constraint; fine-tuning RF-DETR is a GPU job (its docs are written for T4/A100-class GPUs). No GPU means the fallback is a slow CPU fine-tune of YOLO11n, which is AGPL.
 - Proposed: settle at G0; keep the fine-tune as a background script, not an open agent session.
 - Status: OPEN
+- Update 2026-09-28 (G0): P1 has Colab/Kaggle access and runs the fine-tune (P1.5, background script). P2 does not currently have GPU access; if P1 is blocked at G3, P2's fallback duties per IMPLEMENTATION_PLAN.md Part 2 do not include training code, so a GPU-access gap would need re-discussing then.
 - Update 2026-09-28: plan is Kaggle first, Colab as backup. A March 2026 GitHub issue (Kaggle/docker-python #1546) reports Kaggle's default PyTorch build lacks P100 (sm_60) kernels; comments disagree on whether T4 is also affected, and today's status is unverified. Action: whoever trains runs a 5-minute forward-and-backward smoke test on the assigned accelerator at G0 and records the result here. Also pin the `rfdetr` version and save checkpoints every epoch to persistent storage.
 
 ## 2026-09-28 setup DECISION - TTS: pyttsx3 in a worker process; measure interruption at P2.3
@@ -125,7 +128,7 @@ Entry format:
 - Missing: `IMPLEMENTATION_PLAN.md` 5.3(6b) and the lint say every step must begin false / no step's `when` may be true in the baseline window. Sample Transfer's `red_stowed` and `yellow_stowed` ("inside outer_box") are true at baseline because both boxes start in the outer box, so the lint as written would reject the draft. The tracker already latches such steps and re-arms them after `release_frames` false frames.
 - Why it matters: without a fix, either the lint fails on the draft or someone changes the experiment to satisfy a rule that is stricter than the mechanism needs.
 - Proposed fix at G0: a step must be able to go false before its turn. Lint: a step true in a baseline window must go false for at least `release_frames` consecutive frames before its turn in every `correct` run. Add a P2.1 test that a true-at-baseline step fires after a leave-and-return. Confirm against contracts.py and the tracker at G0 (contracts.py was not available when this was written).
-- Status: OPEN
+- Status: OPEN (wording confirmed at G0, dynamic check deferred) -- `contracts.py` now exists; `red_stowed`/`yellow_stowed` are ordinary `inside(label, outer_box)` rules with no special-casing needed in the schema (the "begin false" property is a runtime/tracker behavior, not a shape constraint). `tests/unit/contracts/test_experiment_lint.py` covers the static half now checkable from `config/experiment.json` alone (snake_case + uniqueness, every rule's `label`/`container` in `classes`, every `say` <= `MAX_SPOKEN_WORDS`). The dynamic half (a step true at baseline must go false for `release_frames` before its turn, checked against recorded/cached runs) stays deferred to P2.6 as this entry proposed, since it needs perception caches that do not exist yet. P2.1 should still add the leave-and-return unit test on hand-built `PerceptionFrame`s per the proposal above.
 
 ## 2026-09-28 setup DECISION - run count: extra-run stop rule
 - Decision: 77 runs stay the baseline (36 train / 14 val / 27 test). No source gives the right number (context.md section 5). After the first training pass, fine-tune on about 50% of the train runs; if val mAP and the replay-golden pass rate barely move, do not add extra `correct` runs.
@@ -144,3 +147,21 @@ Entry format:
 - Why it matters: if it fails, fall back to serving the page from a loopback-only Python server with a one-time token (which then needs a decision under AGENTS rule 14).
 - Proposed: check in C5 on each crew member's browser.
 - Status: OPEN
+
+## 2026-09-28 setup DECISION - the closed WhenRule vocabulary (five kinds)
+- Decision needed: `contracts.py` did not exist before this G0 session, so the exact set of `WhenRule` kinds referenced by IMPLEMENTATION_PLAN.md 7.4 ("all five rule kinds") had to be designed, not just read, at G0.
+- Why it matters: AGENTS.md rule 10 closes the vocabulary once set -- nobody may invent a sixth kind later without a contract PR.
+- Decided: five kinds, all pure functions of a floor-filtered `PerceptionFrame` (no learned interaction model, per F4): `inside(label, container)` (both must be detected; true iff the label's box centroid lies inside the container's box), `outside(label, container)` (label must be detected; true if not inside container, and vacuously true if container is not detected at all -- the "missing container" case), `hand_touching(label)` (label's box grown by `touch_margin_frac`; true if any of the 21 landmarks of any hand lies inside it), `absent(label)` (no detection of label at or above `detector_conf_floor` this frame), `present(label)` (the complement of `absent`). The draft `config/experiment.json` only exercises `inside`/`outside`/`hand_touching`; `absent`/`present` are available for P1.2's final experiment revision.
+- Status: DECIDED at G0. Evaluation logic (not the shape) lives in `state/tracker.py`, built at P2.1.
+
+## 2026-09-28 setup CONTRACT - CONTRACT_CHANGES.md docstring reference
+- Missing: `contracts.py`'s header pointed at a `CONTRACT_CHANGES.md` file that was never created; IMPLEMENTATION_PLAN.md Part 6 says to read that as this file (`ISSUES.md`) and "fix that docstring in the G0 contract PR."
+- Why it matters: a stale pointer sends the next reader looking for a file that doesn't exist.
+- Status: RESOLVED at G0 -- `contracts.py`'s module docstring now names `ISSUES.md` directly.
+
+---
+
+## 2026-09-28 G0 sign-off
+- P2 (this machine, Windows): `uv sync --group dev` installs cleanly (271 packages resolved, `uv.lock` committed); `python scripts/check.py --quick` is green (ruff clean, 31 passed / 1 skipped -- the one skip is the RunScript-integrity test, which has nothing to check until runs exist); git hooks installed and verified live (pre-commit and pre-push both fired and passed on the scaffold commit); audio self-test and camera check both passed (see the OS DECISION entry above for details). `contracts.py` authored (it did not exist before this session) and reviewed against every reference to it in `IMPLEMENTATION_PLAN.md` and `essential-features.md`; the four open CONTRACT entries above are applied and resolved; the WhenRule vocabulary is decided. `develop` and `main` created and pushed; the G0 scaffold is on `develop` (commit `d8d4a66`).
+- P1 sign-off: PENDING. Per AGENTS.md, "nothing closes until BOTH people say yes in this sitting" -- P1 still needs to: read `contracts.py` line by line and ack (or raise) any changes; review the draft `config/experiment.json`; run `uv sync --group dev` and `python scripts/check.py --quick` green on their own machine; run their own audio self-test and camera check; add their own sign-off line here.
+- Status: OPEN -- do not tag `g0` until P1 adds their sign-off line below this one.
