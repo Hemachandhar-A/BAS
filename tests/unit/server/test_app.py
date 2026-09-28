@@ -7,6 +7,8 @@ driven directly, exactly as harness/replay.py does."""
 from __future__ import annotations
 
 import base64
+import threading
+import time
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -26,7 +28,7 @@ from contracts import (
 from engine.sequence import SequenceEngine
 from outputs.tts import FakeSpeaker
 from runtime.loop import LatestFrameStore, Router
-from server.app import RecentAlerts, create_app, resolve_bind_host
+from server.app import RecentAlerts, _JpegCache, _render_index, create_app, resolve_bind_host
 
 FIXTURE_PATH = Path(__file__).resolve().parents[3] / "fixtures" / "experiment_4step.json"
 USERNAME = "op"
@@ -361,3 +363,131 @@ def test_recent_alerts_ignores_non_deviation_events() -> None:
         EngineEvent(t=0.0, kind="step_confirmed", step_id="s1", confidence_tag="confirmed")
     )
     assert history.snapshot() == []
+
+
+# ---------------------------------------------------------------------------
+# Edge cases found on review: path traversal via ?run_id, a degenerate frame
+# crashing /video_feed, and a silently-broken index.html placeholder.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.F12
+@pytest.mark.parametrize(
+    "malicious_run_id",
+    [
+        "../secret",
+        "../../etc/passwd",
+        "..%2f..%2fsecret",
+        "a/b",
+        "a\\b",
+        "a b",  # rejected too -- no legitimately generated run_id has a space
+        "",
+    ],
+)
+def test_get_log_rejects_a_run_id_that_could_escape_log_dir(
+    tmp_path: Path, experiment: ExperimentDefinition, malicious_run_id: str
+) -> None:
+    # A file a real run would never produce, placed just outside log_dir,
+    # so a successful traversal would be observable as a 200 with content.
+    outside = tmp_path.parent / "secret.jsonl"
+    outside.write_text(
+        '{"seq": 0, "run_id": "secret", "t_video": 0.0, '
+        '"event_type": "run_started", "detail": "should never be readable"}\n',
+        encoding="utf-8",
+    )
+    try:
+        app, *_ = _make_app(tmp_path, experiment)
+        resp = app.test_client().get(
+            "/api/log",
+            query_string={"run_id": malicious_run_id},
+            headers={"Authorization": AUTH_HEADER},
+        )
+        # Either rejected outright (400) or treated as an ordinary, absent
+        # run_id (404) -- never a 200 that leaked content from outside log_dir.
+        assert resp.status_code in (400, 404)
+        if resp.status_code == 400:
+            assert resp.get_json()["error"]
+    finally:
+        outside.unlink(missing_ok=True)
+
+
+@pytest.mark.F12
+def test_get_log_accepts_every_run_id_format_this_codebase_actually_generates(
+    tmp_path: Path, experiment: ExperimentDefinition
+) -> None:
+    for run_id in ["live-20260928T193538Z-7ff758", "train-01", "test-27", "concurrent-run-0"]:
+        (tmp_path / f"{run_id}.jsonl").write_text(
+            f'{{"seq": 0, "run_id": "{run_id}", "t_video": 0.0, '
+            f'"event_type": "run_started", "detail": "Run started"}}\n',
+            encoding="utf-8",
+        )
+    app, *_ = _make_app(tmp_path, experiment)
+    client = app.test_client()
+    for run_id in ["live-20260928T193538Z-7ff758", "train-01", "test-27", "concurrent-run-0"]:
+        resp = client.get(f"/api/log?run_id={run_id}", headers={"Authorization": AUTH_HEADER})
+        assert resp.status_code == 200, run_id
+        assert resp.get_json()["run_id"] == run_id
+
+
+@pytest.mark.F10
+def test_jpeg_cache_encodes_and_caches_a_normal_frame() -> None:
+    cache = _JpegCache(jpeg_quality=80)
+    frame = Frame(frame_id=1, t=0.0, image=np.zeros((4, 4, 3), dtype=np.uint8))
+    jpg1 = cache.encode(frame)
+    assert jpg1 is not None
+    assert jpg1.startswith(b"\xff\xd8")  # JPEG magic bytes
+    jpg2 = cache.encode(frame)  # same frame_id -> served from cache
+    assert jpg2 is jpg1
+
+
+@pytest.mark.F10
+def test_jpeg_cache_returns_none_instead_of_raising_for_a_degenerate_frame() -> None:
+    # cv2.imencode raises cv2.error on a zero-height image (confirmed
+    # empirically) -- contracts.Frame does not itself reject H=0, so
+    # /video_feed must survive being handed one rather than crashing every
+    # connected client's stream.
+    cache = _JpegCache(jpeg_quality=80)
+    degenerate = Frame(frame_id=1, t=0.0, image=np.zeros((0, 4, 3), dtype=np.uint8))
+    assert cache.encode(degenerate) is None
+
+
+@pytest.mark.F10
+def test_video_feed_skips_a_degenerate_frame_and_recovers(
+    tmp_path: Path, experiment: ExperimentDefinition
+) -> None:
+    # The store only ever holds one frame (latest-frame-wins), and the test
+    # client's client.get() itself blocks internally until the generator
+    # yields at least once -- so the good frame must already be racing in
+    # from another thread *before* client.get() is called, not after (by
+    # then it would be too late: client.get() would never have returned to
+    # let this test start the injector in the first place).
+    app, _router, _loop, frame_store = _make_app(tmp_path, experiment)
+    frame_store.put(Frame(frame_id=1, t=0.0, image=np.zeros((0, 4, 3), dtype=np.uint8)))
+
+    def _inject_good_frame_soon() -> None:
+        time.sleep(0.05)
+        frame_store.put(Frame(frame_id=2, t=0.1, image=np.zeros((4, 4, 3), dtype=np.uint8)))
+
+    injector = threading.Thread(target=_inject_good_frame_soon, daemon=True)
+    injector.start()
+    try:
+        # If the degenerate frame crashed the generator instead of being
+        # skipped, this call would raise cv2.error (confirmed empirically)
+        # instead of eventually returning once the injector's good frame
+        # lands.
+        resp = app.test_client().get("/video_feed", headers={"Authorization": AUTH_HEADER})
+        assert resp.status_code == 200
+        chunk = next(resp.response)
+        assert chunk.startswith(b"--frame\r\nContent-Type: image/jpeg\r\n\r\n")
+        resp.response.close()
+    finally:
+        injector.join(timeout=2.0)
+
+
+@pytest.mark.F12
+def test_render_index_is_self_contained_html() -> None:
+    html = _render_index()
+    assert "/*__STYLE_CSS__*/" not in html
+    assert "/*__APP_JS__*/" not in html
+    assert "<style>" in html
+    assert "<script>" in html

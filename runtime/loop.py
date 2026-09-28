@@ -55,6 +55,7 @@ from contracts import (
     Speaker,
     StateEvent,
     StateTracker,
+    StepProgress,
 )
 from outputs.logger import JsonlLogger
 from runtime.recorder import Recorder
@@ -170,13 +171,20 @@ class Router:
         self._idle_armed = True
         self._lock = threading.RLock()
 
-    @property
-    def engine(self) -> Engine:
-        """Read-only access for server/app.py's ``GET /api/status`` handler
-        (F12), which needs ``Engine.snapshot()`` to render step statuses.
-        Handlers only ever read this -- they never call a mutating method
-        on it directly (run control goes through ``start``/``reset`` above)."""
-        return self._engine
+    def status_snapshot(self) -> tuple[str | None, RunState, list[StepProgress]]:
+        """Atomically reads ``(run_id, run_state, Engine.snapshot())`` under
+        the same lock ``process_perception_frame``/``process_state_event``
+        hold while mutating the engine -- for server/app.py's ``GET
+        /api/status`` (F12), polled continuously while a run is active.
+        Without this, a poll could read ``Engine.snapshot()`` mid-mutation
+        (e.g. partway through an omission event's loop that marks several
+        ``skipped_step_ids`` one key at a time) and briefly render a torn,
+        self-inconsistent step list. ``self._lock`` is reentrant, so this
+        is just the existing ``run_id``/``run_state`` properties plus
+        ``Engine.snapshot()``, all under one lock acquisition instead of
+        three independent ones."""
+        with self._lock:
+            return self.run_id, self.run_state, self._engine.snapshot()
 
     @property
     def run_id(self) -> str | None:

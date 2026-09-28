@@ -30,16 +30,27 @@ def load_env_file(path: str | Path = ".env") -> None:
             os.environ[key] = value
 
 
+_PLACEHOLDER = "changeme"  # .env.example's placeholder value
+
+
 def stream_credentials() -> tuple[str, str]:
     """Reads ``STREAM_USER``/``STREAM_PASSWORD`` from the environment
     (call ``load_env_file()`` first to populate it from ``.env``). Raises
-    ``RuntimeError`` with a clear message if either is unset -- never falls
-    back to a hardcoded default credential."""
+    ``RuntimeError`` with a clear message if either is unset, or still set
+    to ``.env.example``'s literal ``changeme`` placeholder (a real
+    .env copied without editing it) -- never falls back to a hardcoded
+    default credential."""
     user = os.environ.get("STREAM_USER")
     password = os.environ.get("STREAM_PASSWORD")
     if not user or not password:
         raise RuntimeError(
             "STREAM_USER / STREAM_PASSWORD are not set. Copy .env.example "
             "to .env and fill in real values (AGENTS.md rule 14)."
+        )
+    if user == _PLACEHOLDER or password == _PLACEHOLDER:
+        raise RuntimeError(
+            "STREAM_USER / STREAM_PASSWORD are still set to .env.example's "
+            "'changeme' placeholder. Edit .env with real values before "
+            "starting the server (AGENTS.md rule 14)."
         )
     return user, password

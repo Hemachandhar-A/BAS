@@ -9,6 +9,7 @@ from __future__ import annotations
 import itertools
 import json
 import threading
+import time
 from pathlib import Path
 
 import pytest
@@ -16,11 +17,14 @@ import pytest
 from contracts import (
     ContractViolation,
     Detection,
+    EngineEvent,
     ExperimentDefinition,
     PerceptionConfig,
     PerceptionFrame,
+    RunState,
     RuntimeConfig,
     StateEvent,
+    StepProgress,
 )
 from engine.sequence import SequenceEngine
 from outputs.tts import FakeSpeaker
@@ -214,6 +218,31 @@ def test_router_reset_while_running_writes_run_completed_aborted(
     assert events[0].summary.aborted is True
 
 
+def test_status_snapshot_reports_idle_not_completed_after_an_abort_with_residual_pending_steps(
+    experiment: ExperimentDefinition, tmp_path: Path
+) -> None:
+    """server/app.py's GET /api/status (F12) deliberately does not special-
+    case ``run_state == "completed"`` when deriving step guidance, reasoning
+    that ``Router.reset()`` always flips its own ``idle_armed`` flag in the
+    same locked call that aborts the engine, so ``run_state`` is "idle" --
+    never "completed" -- immediately afterward, even though the aborted
+    run's never-reached steps are still "pending" (SequenceEngine does not
+    retroactively mark them "skipped"). This pins that reasoning as a
+    regression test rather than leaving it as an unverified code comment."""
+    router = _router(experiment, tmp_path)
+    router.start(t=0.0)
+    router.process_state_event(
+        StateEvent(t=0.5, step_id="s1", confidence=1.0, uncertain=False)
+    )
+    router.reset(t=1.0)  # abort with s2/s3/s4 still pending
+
+    run_id, run_state, steps = router.status_snapshot()
+    assert run_state == "idle"
+    statuses = {s.step_id: s.status for s in steps}
+    assert statuses["s1"] == "confirmed"
+    assert statuses["s2"] == "pending"
+
+
 def test_router_reset_while_idle_is_a_noop_for_the_engine(
     experiment: ExperimentDefinition, tmp_path: Path
 ) -> None:
@@ -383,3 +412,94 @@ def test_feed_lost_and_restored_are_logged_while_running(
     assert types == ["run_started", "feed_lost", "feed_restored"]
     assert lines[1]["detail"] == "No frame received for 3.0s"
     assert lines[2]["detail"] == "Feed restored"
+
+
+# ---------------------------------------------------------------------------
+# status_snapshot() -- atomic read for server/app.py's GET /api/status (F12),
+# polled continuously while a run is active from a different thread than the
+# one mutating the engine (essential-features.md section 0).
+# ---------------------------------------------------------------------------
+
+
+class _SlowMutatingEngine:
+    """A minimal ``contracts.Engine`` double whose ``on_state_event``
+    mutates its status dict in two separate steps with a controlled pause
+    in between -- simulating ``SequenceEngine``'s own multi-key mutation
+    (e.g. an omission event's loop marking several ``skipped_step_ids`` one
+    key at a time, engine/sequence.py). Proves ``Router.status_snapshot()``
+    can never observe the torn in-between state: a concurrent reader must
+    block on the same lock the writer holds for the whole mutation, so it
+    only ever sees the state from strictly before or strictly after."""
+
+    def __init__(self, release_event: threading.Event, proceed_event: threading.Event) -> None:
+        self._release_event = release_event
+        self._proceed_event = proceed_event
+        self._status = {"a": "pending", "b": "pending"}
+        self.run_state: RunState = "running"
+
+    def start(self, t: float, run_id: str = "") -> None:
+        pass
+
+    def on_state_event(self, event: StateEvent) -> list[EngineEvent]:
+        self._status["a"] = "confirmed"
+        self._release_event.set()
+        assert self._proceed_event.wait(timeout=5.0), "test setup: proceed_event never set"
+        self._status["b"] = "confirmed"
+        return []
+
+    def finish(self, t: float) -> list[EngineEvent]:
+        return []
+
+    def snapshot(self) -> list[StepProgress]:
+        return [StepProgress(step_id=k, status=v) for k, v in self._status.items()]
+
+
+def test_status_snapshot_never_observes_a_torn_engine_mutation(
+    experiment: ExperimentDefinition, tmp_path: Path
+) -> None:
+    runtime_config = RuntimeConfig()
+    release_event = threading.Event()
+    proceed_event = threading.Event()
+    engine = _SlowMutatingEngine(release_event, proceed_event)
+    router = Router(experiment, runtime_config, None, engine, FakeSpeaker(), tmp_path)
+    router.start(t=0.0)
+
+    def writer() -> None:
+        router.process_state_event(
+            StateEvent(t=0.0, step_id="s1", confidence=1.0, uncertain=False)
+        )
+
+    result: dict[str, tuple[str | None, RunState, list[StepProgress]]] = {}
+
+    def reader() -> None:
+        result["snapshot"] = router.status_snapshot()
+
+    writer_thread = threading.Thread(target=writer, daemon=True)
+    reader_thread = threading.Thread(target=reader, daemon=True)
+    try:
+        writer_thread.start()
+        assert release_event.wait(timeout=5.0), "writer never reached the mid-mutation pause"
+
+        reader_thread.start()
+        time.sleep(0.2)  # give the reader a chance to attempt (and block on) Router._lock
+        assert "snapshot" not in result, (
+            "reader must still be blocked by the writer's lock -- if this fails, "
+            "status_snapshot() is no longer synchronized with engine mutation"
+        )
+
+        proceed_event.set()
+        writer_thread.join(timeout=5.0)
+        reader_thread.join(timeout=5.0)
+    finally:
+        proceed_event.set()  # unblock the writer even if an assertion above failed
+        writer_thread.join(timeout=5.0)
+        reader_thread.join(timeout=5.0)
+
+    assert not writer_thread.is_alive()
+    assert not reader_thread.is_alive()
+    assert "snapshot" in result, "reader thread never completed"
+
+    _run_id, _run_state, steps = result["snapshot"]
+    statuses = {s.step_id: s.status for s in steps}
+    # Never {"a": "confirmed", "b": "pending"} -- the torn intermediate state.
+    assert statuses == {"a": "confirmed", "b": "confirmed"}

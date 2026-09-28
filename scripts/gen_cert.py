@@ -72,6 +72,18 @@ def main(argv: list[str] | None = None) -> int:
     )
     args = parser.parse_args(argv)
 
+    if args.days < 1:
+        print(f"--days must be at least 1, got {args.days}.", file=sys.stderr)
+        return 1
+
+    if args.cert_path.resolve() == args.key_path.resolve():
+        print(
+            f"--cert-path and --key-path must differ (both resolve to {args.cert_path.resolve()}), "
+            "or one would silently overwrite the other.",
+            file=sys.stderr,
+        )
+        return 1
+
     if not args.force and (args.cert_path.exists() or args.key_path.exists()):
         print(
             f"{args.cert_path} or {args.key_path} already exists; pass --force to overwrite.",
