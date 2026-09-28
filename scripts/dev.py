@@ -65,42 +65,46 @@ def main() -> int:
     )
 
     source = open_source(runtime_config.source)
+    # Everything from here on that can raise (PerceptionPipeline, TTSWorker,
+    # Router, RuntimeLoop, create_app, start_threads, run_app) must still
+    # close `source` (and `speaker`, once it exists) on the way out --
+    # nothing else owns them until RuntimeLoop is successfully constructed,
+    # and even then RuntimeLoop.stop() is the one thing that actually closes
+    # `source`. A bare try/except around only the PerceptionPipeline
+    # construction step (the original shape here) left every later failure
+    # point leaking the camera; one try/finally covering the whole wiring
+    # sequence, keyed on whether `loop` was reached, covers all of them.
+    loop: RuntimeLoop | None = None
+    speaker: TTSWorker | None = None
+    exit_code = 0
     try:
         perception = PerceptionPipeline(perception_config)
-    except Exception:
-        # Nothing has claimed ownership of `source` yet (no RuntimeLoop
-        # exists to close it in its own cleanup), so this is the one spot
-        # that must close it itself rather than leak the camera/file handle.
-        source.close()
-        raise
-    tracker = StateTracker(experiment, perception_config)
-    engine = SequenceEngine(experiment, runtime_config)
-    speaker = TTSWorker()
-    recent_alerts = RecentAlerts(cap=20)
-    router = Router(
-        experiment,
-        runtime_config,
-        tracker,
-        engine,
-        speaker,
-        runtime_config.log_dir,
-        on_engine_event=recent_alerts,
-    )
-    loop = RuntimeLoop(source, perception, router, runtime_config, runtime_config.video_dir)
-    app = create_app(
-        experiment=experiment,
-        runtime_config=runtime_config,
-        router=router,
-        loop=loop,
-        log_dir=runtime_config.log_dir,
-        username=username,
-        password=password,
-        recent_alerts=recent_alerts.snapshot,
-    )
+        tracker = StateTracker(experiment, perception_config)
+        engine = SequenceEngine(experiment, runtime_config)
+        speaker = TTSWorker()
+        recent_alerts = RecentAlerts(cap=20)
+        router = Router(
+            experiment,
+            runtime_config,
+            tracker,
+            engine,
+            speaker,
+            runtime_config.log_dir,
+            on_engine_event=recent_alerts,
+        )
+        loop = RuntimeLoop(source, perception, router, runtime_config, runtime_config.video_dir)
+        app = create_app(
+            experiment=experiment,
+            runtime_config=runtime_config,
+            router=router,
+            loop=loop,
+            log_dir=runtime_config.log_dir,
+            username=username,
+            password=password,
+            recent_alerts=recent_alerts.snapshot,
+        )
 
-    exit_code = 0
-    loop.start_threads()
-    try:
+        loop.start_threads()
         logger.info(
             "dashboard on %s:%d -- open it and press Start (Ctrl+C here to stop)",
             resolve_bind_host(runtime_config),
@@ -114,15 +118,22 @@ def main() -> int:
         logger.exception("scripts/dev.py: run failed")
         exit_code = 1
     finally:
-        # loop.stop() (which closes the source/recorder and joins the
-        # threads) must run even if reset_run() itself failed -- a failure
-        # in one shutdown step must never skip the others.
-        try:
-            loop.reset_run(t=0.0)
-        except Exception:
-            logger.warning("scripts/dev.py: reset_run failed during shutdown", exc_info=True)
-        loop.stop()
-        speaker.close()
+        if loop is not None:
+            # loop.stop() (which closes source/recorder and joins the
+            # threads) must run even if reset_run() itself failed -- a
+            # failure in one shutdown step must never skip the others.
+            try:
+                loop.reset_run(t=0.0)
+            except Exception:
+                logger.warning("scripts/dev.py: reset_run failed during shutdown", exc_info=True)
+            loop.stop()
+        else:
+            try:
+                source.close()
+            except Exception:
+                logger.warning("scripts/dev.py: error closing frame source", exc_info=True)
+        if speaker is not None:
+            speaker.close()
     return exit_code
 
 

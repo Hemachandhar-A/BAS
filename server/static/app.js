@@ -107,7 +107,14 @@
     els.btnReset.disabled = status.run_state === "idle";
   }
 
+  // Guards against out-of-order responses: if a slow poll resolves after a
+  // newer one already started (e.g. the server briefly lags), applying it
+  // would flash stale state back onto the page. Only the response to the
+  // most recently issued poll is ever rendered.
+  var pollSeq = 0;
+
   function poll() {
+    var seq = ++pollSeq;
     fetch("/api/status")
       .then(function (response) {
         if (!response.ok) {
@@ -116,17 +123,34 @@
         return response.json();
       })
       .then(function (status) {
+        if (seq !== pollSeq) {
+          return; // a newer poll already started; this response is stale
+        }
         showError(null);
         renderStatus(status);
       })
       .catch(function (err) {
+        if (seq !== pollSeq) {
+          return;
+        }
         showError("Could not reach the server: " + err.message);
       });
   }
 
-  function postRunControl(path) {
+  function postRunControl(path, button) {
+    // Disabled immediately so a fast double-click can't fire the request
+    // twice; renderStatus() (via the poll() below) sets the real
+    // enabled/disabled state from the server's actual run_state once it
+    // responds, on both the success and the "already in that state" paths.
+    button.disabled = true;
     fetch(path, { method: "POST" })
       .then(function (response) {
+        if (response.status === 409) {
+          // Another click (or another client) already changed the run
+          // state first -- not a real failure. The poll() below will show
+          // the server's actual current state.
+          return null;
+        }
         if (!response.ok) {
           throw new Error("request failed: " + response.status);
         }
@@ -137,14 +161,15 @@
       })
       .catch(function (err) {
         showError("Could not reach the server: " + err.message);
+        button.disabled = false;
       });
   }
 
   els.btnStart.addEventListener("click", function () {
-    postRunControl("/api/run/start");
+    postRunControl("/api/run/start", els.btnStart);
   });
   els.btnReset.addEventListener("click", function () {
-    postRunControl("/api/run/reset");
+    postRunControl("/api/run/reset", els.btnReset);
   });
 
   poll();

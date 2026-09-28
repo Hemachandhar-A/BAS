@@ -47,3 +47,30 @@ def test_main_overwrites_with_force(tmp_path: Path) -> None:
     main(["--cert-path", str(cert_path), "--key-path", str(key_path)])
     rc = main(["--cert-path", str(cert_path), "--key-path", str(key_path), "--force"])
     assert rc == 0
+
+
+@pytest.mark.F10
+def test_main_rejects_zero_days(tmp_path: Path) -> None:
+    cert_path = tmp_path / "cert.pem"
+    key_path = tmp_path / "key.pem"
+    rc = main(["--cert-path", str(cert_path), "--key-path", str(key_path), "--days", "0"])
+    assert rc == 1
+    assert not cert_path.exists()
+    assert not key_path.exists()
+
+
+@pytest.mark.F10
+def test_main_rejects_negative_days(tmp_path: Path) -> None:
+    cert_path = tmp_path / "cert.pem"
+    key_path = tmp_path / "key.pem"
+    rc = main(["--cert-path", str(cert_path), "--key-path", str(key_path), "--days", "-5"])
+    assert rc == 1
+    assert not cert_path.exists()
+
+
+@pytest.mark.F10
+def test_main_rejects_identical_cert_and_key_paths(tmp_path: Path) -> None:
+    same_path = tmp_path / "both.pem"
+    rc = main(["--cert-path", str(same_path), "--key-path", str(same_path)])
+    assert rc == 1
+    assert not same_path.exists()

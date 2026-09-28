@@ -20,6 +20,8 @@ from __future__ import annotations
 
 import hmac
 import json
+import logging
+import re
 import threading
 import time
 from collections import deque
@@ -43,7 +45,16 @@ from contracts import (
 )
 from runtime.loop import LatestFrameStore, Router
 
+logger = logging.getLogger(__name__)
+
 STATIC_DIR = Path(__file__).parent / "static"
+
+# Matches every run_id this codebase actually generates -- default_run_id()
+# ("live-20260928T193538Z-7ff758") and the crew's recorded "<split>-<n>"
+# ids (RunScript) -- while rejecting path separators, "..", and anything
+# else that could escape log_dir when built into GET /api/log's file path
+# from an untrusted query parameter.
+_SAFE_RUN_ID_RE = re.compile(r"^[A-Za-z0-9_-]{1,128}$")
 
 
 class RuntimeLoopLike(Protocol):
@@ -105,14 +116,33 @@ class _JpegCache:
         self._frame_id: int | None = None
         self._jpg: bytes | None = None
 
-    def encode(self, frame: Frame) -> bytes:
+    def encode(self, frame: Frame) -> bytes | None:
+        """Returns ``None`` (never raises) if this frame cannot be
+        JPEG-encoded -- e.g. a degenerate zero-height/zero-width ``Frame``,
+        which ``contracts.Frame`` does not itself reject but which makes
+        ``cv2.imencode`` raise ``cv2.error`` (confirmed empirically, not
+        just a theoretical case). One bad frame must not crash every
+        connected client's stream, matching the "one bad frame never
+        crashes the loop" principle applied elsewhere (essential-features.md
+        section 0)."""
         with self._lock:
             if frame.frame_id != self._frame_id or self._jpg is None:
-                ok, buf = cv2.imencode(
-                    ".jpg", frame.image, [cv2.IMWRITE_JPEG_QUALITY, self._quality]
-                )
+                try:
+                    ok, buf = cv2.imencode(
+                        ".jpg", frame.image, [cv2.IMWRITE_JPEG_QUALITY, self._quality]
+                    )
+                except cv2.error:
+                    logger.warning(
+                        "server/app.py: JPEG encode raised for frame %d",
+                        frame.frame_id,
+                        exc_info=True,
+                    )
+                    return None
                 if not ok:
-                    raise RuntimeError("server/app.py: JPEG encode failed")
+                    logger.warning(
+                        "server/app.py: JPEG encode failed for frame %d", frame.frame_id
+                    )
+                    return None
                 self._jpg = buf.tobytes()
                 self._frame_id = frame.frame_id
             return self._jpg
@@ -141,7 +171,22 @@ def _step_guidance(
     should be doing), ``next_step_id`` is the step after it, and
     ``next_step_say`` is that next step's spoken guidance -- so the
     dashboard's single "current/next step" element (essential-features.md
-    #12) can show both without a second lookup."""
+    #12) can show both without a second lookup.
+
+    Considered and deliberately not special-casing ``run_state ==
+    "completed"``: for a *naturally* completed run every step is already
+    ``confirmed``/``skipped``/``completed_late`` (never ``pending``,
+    SequenceEngine's own omission handling marks every earlier pending step
+    ``skipped`` in the same event that confirms the last step), so
+    ``pending`` is already empty and this returns ``None``s regardless. An
+    aborted run (``POST /api/run/reset`` while running) never leaves
+    ``run_state == "completed"`` observable here at all -- ``Router.reset()``
+    sets its own ``idle_armed`` flag in the same locked call that aborts the
+    engine, so ``Router.run_state`` reports ``"idle"`` immediately
+    (confirmed empirically), carrying over the aborted run's last known step
+    statuses as reference until the next ``start()`` resets them -- which is
+    reasonable, not stale/misleading, so no suppression is needed there
+    either."""
     pending = _pending_step_ids(steps)
     expected_step_id = pending[0] if pending else None
     next_step_id = pending[1] if len(pending) > 1 else None
@@ -152,12 +197,21 @@ def _step_guidance(
 def _render_index() -> str:
     """Inlines ``style.css``/``app.js`` into ``index.html`` once (they are
     static files on disk, read a single time at app-creation, never per
-    request)."""
+    request). Asserts each placeholder is present exactly once rather than
+    silently shipping an unstyled/non-interactive page if a future edit to
+    index.html drops one -- a missing placeholder would otherwise fail
+    silently (the offline-static-scan test would still pass, since there'd
+    just be less content, not a non-local URL)."""
     html = (STATIC_DIR / "index.html").read_text(encoding="utf-8")
     css = (STATIC_DIR / "style.css").read_text(encoding="utf-8")
     js = (STATIC_DIR / "app.js").read_text(encoding="utf-8")
-    html = html.replace("/*__STYLE_CSS__*/", css)
-    html = html.replace("/*__APP_JS__*/", js)
+    if html.count("/*__STYLE_CSS__*/") != 1 or html.count("/*__APP_JS__*/") != 1:
+        raise RuntimeError(
+            "server/static/index.html must contain exactly one "
+            "/*__STYLE_CSS__*/ and one /*__APP_JS__*/ placeholder"
+        )
+    html = html.replace("/*__STYLE_CSS__*/", css, 1)
+    html = html.replace("/*__APP_JS__*/", js, 1)
     return html
 
 
@@ -217,20 +271,21 @@ def create_app(
                 frame = loop.frame_store.get()
                 if frame is not None:
                     jpg = jpeg_cache.encode(frame)
-                    yield (
-                        b"--frame\r\nContent-Type: image/jpeg\r\n\r\n" + jpg + b"\r\n"
-                    )
+                    if jpg is not None:
+                        yield (
+                            b"--frame\r\nContent-Type: image/jpeg\r\n\r\n" + jpg + b"\r\n"
+                        )
                 time.sleep(period)
 
         return Response(gen(), mimetype="multipart/x-mixed-replace; boundary=frame")
 
     @app.get("/api/status")
     def get_status() -> Response:
-        steps = router.engine.snapshot()
+        run_id, run_state, steps = router.status_snapshot()
         expected_step_id, next_step_id, next_step_say = _step_guidance(steps, say_by_id)
         body = StatusResponse(
-            run_id=router.run_id,
-            run_state=router.run_state,
+            run_id=run_id,
+            run_state=run_state,
             feed_ok=loop.feed_ok,
             fps=loop.fps,
             steps=steps,
@@ -247,12 +302,18 @@ def create_app(
         return Response(experiment.model_dump_json(), mimetype="application/json")
 
     @app.get("/api/log")
-    def get_log() -> Response:
+    def get_log() -> tuple[Response, int] | Response:
         run_id = request.args.get("run_id") or router.run_id
         if not run_id:
             return jsonify({"run_id": None, "entries": []})
+        if not _SAFE_RUN_ID_RE.match(run_id):
+            # request.args is untrusted client input; reject anything that
+            # isn't a run_id this codebase could actually have generated
+            # before it ever reaches a filesystem path (path traversal via
+            # e.g. ?run_id=../../secrets would otherwise escape log_dir).
+            return jsonify({"error": f"invalid run_id {run_id!r}"}), 400
         path = log_dir / f"{run_id}.jsonl"
-        if not path.exists():
+        if not path.is_file():
             return jsonify({"error": f"no log for run_id {run_id!r}"}), 404
         entries: list[dict] = []
         for line in path.read_text(encoding="utf-8").splitlines():
