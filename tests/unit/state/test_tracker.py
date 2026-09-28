@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import pytest
 
+import contracts
 from contracts import (
     AbsentRule,
     Detection,
@@ -71,7 +72,8 @@ def _det(label: str, conf: float, box) -> Detection:
 
 
 def _hand(landmarks_px, score: float = 0.9, handedness: str = "Right") -> Hand:
-    pts = list(landmarks_px) + [landmarks_px[-1]] * (21 - len(landmarks_px))
+    landmarks_px = list(landmarks_px) or [(0.0, 0.0)]  # never index [-1] into an empty list
+    pts = landmarks_px + [landmarks_px[-1]] * (21 - len(landmarks_px))
     return Hand(handedness=handedness, score=score, landmarks_px=pts)
 
 
@@ -628,3 +630,11 @@ def test_reset_starts_a_fresh_baseline_window() -> None:
     assert tracker.update(true_frame) == []  # baseline frame -> latched
     tracker.reset()
     assert tracker.update(true_frame) == []  # baseline again after reset -> latched, not firing
+
+
+def test_state_tracker_satisfies_the_contracts_protocol() -> None:
+    # contracts.StateTracker is a @runtime_checkable Protocol; state/tracker.py's
+    # docstring claims to implement it (duck-typed). Lock that claim in.
+    exp = _experiment(PresentRule(label="box"), ["box"])
+    tracker = StateTracker(exp, PerceptionConfig())
+    assert isinstance(tracker, contracts.StateTracker)
