@@ -41,18 +41,18 @@ def test_start_run_opens_recorder_and_reset_run_produces_a_playable_file(tmp_pat
     loop = RuntimeLoop(source, FakePerception([]), router, runtime_config, video_dir=tmp_path)
 
     loop.start_threads()
-    run_id = loop.start_run(t=0.0)
+    try:
+        run_id = loop.start_run(t=0.0)
+        video_path = tmp_path / f"{run_id}.avi"
+
+        deadline = time.monotonic() + 5.0
+        while time.monotonic() < deadline and not loop.stopped:
+            time.sleep(0.01)
+    finally:
+        loop.reset_run(t=1.0)  # closes the recorder
+        loop.stop()
+
     assert run_id == "recorder-integration"
-
-    video_path = tmp_path / f"{run_id}.avi"
-
-    deadline = time.monotonic() + 5.0
-    while time.monotonic() < deadline and not loop.stopped:
-        time.sleep(0.01)
-
-    loop.reset_run(t=1.0)  # closes the recorder
-    loop.stop()
-
     assert video_path.exists()
     cap = cv2.VideoCapture(str(video_path))
     try:
