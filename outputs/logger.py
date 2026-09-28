@@ -37,9 +37,7 @@ class JsonlLogger:
             raise ContractViolation(
                 f"LogEntry.seq out of order: expected {self._next_seq}, got {entry.seq}"
             )
-        if self._run_id is None:
-            self._run_id = entry.run_id
-        elif entry.run_id != self._run_id:
+        if self._run_id is not None and entry.run_id != self._run_id:
             raise ContractViolation(
                 f"LogEntry.run_id changed mid-stream: expected {self._run_id!r}, "
                 f"got {entry.run_id!r} (one JsonlLogger instance is one run/path)"
@@ -49,7 +47,12 @@ class JsonlLogger:
             raise ContractViolation(f"wall_clock() must return a datetime, got {now!r}")
         if now.tzinfo is None:
             raise ContractViolation("wall_clock() must return a timezone-aware datetime")
+        # Only commit state once every check has passed -- a rejected write
+        # (e.g. a bad wall_clock on the very first call) must leave both
+        # the seq counter and the run_id lock-in untouched, so a retry with
+        # a genuinely different run_id isn't spuriously rejected.
         self._next_seq += 1
+        self._run_id = entry.run_id
         stamped = entry.model_copy(update={"t_wall": now})
         # newline="" keeps the trailing "\n" literal -- Windows' default text
         # mode would otherwise translate it to "\r\n", corrupting the pure

@@ -12,7 +12,14 @@ import time
 
 import pytest
 
-from outputs.tts import FakeSpeaker, TTSWorker, null_engine_factory
+from outputs.tts import FakeSpeaker, TTSWorker, _choose_english_voice, null_engine_factory
+
+
+class _FakeVoice:
+    def __init__(self, name: str = "", languages=None, id: str = "voice-id") -> None:  # noqa: A002
+        self.name = name
+        self.languages = languages if languages is not None else []
+        self.id = id
 
 
 def _raising_engine_factory():
@@ -82,6 +89,50 @@ def test_fake_speaker_ignores_calls_after_close() -> None:
     speaker.close()
     speaker.say("Should be dropped", "alert")
     assert speaker.calls == [("Stow the red sample", "info")]
+
+
+# ---------------------------------------------------------------------------
+# _choose_english_voice -- "first installed voice whose name or languages
+# indicate English, else the default" (essential-features.md section 7.3)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.F7
+def test_choose_english_voice_returns_none_for_empty_list() -> None:
+    assert _choose_english_voice([]) is None
+
+
+@pytest.mark.F7
+def test_choose_english_voice_matches_on_language_code() -> None:
+    david = _FakeVoice(name="Microsoft David Desktop", languages=["en-US"])
+    assert _choose_english_voice([david]) is david
+
+
+@pytest.mark.F7
+def test_choose_english_voice_matches_bytes_language_code() -> None:
+    # espeak-ng (Linux) reports languages as byte strings, e.g. b"en".
+    espeak_en = _FakeVoice(name="english", languages=[b"en"])
+    assert _choose_english_voice([espeak_en]) is espeak_en
+
+
+@pytest.mark.F7
+def test_choose_english_voice_matches_on_name_when_no_language_tag() -> None:
+    hazel = _FakeVoice(name="Microsoft Hazel Desktop - English (Great Britain)", languages=[])
+    assert _choose_english_voice([hazel]) is hazel
+
+
+@pytest.mark.F7
+def test_choose_english_voice_prefers_the_first_match_in_list_order() -> None:
+    hazel = _FakeVoice(name="Hazel", languages=["en-GB"])
+    david = _FakeVoice(name="David", languages=["en-US"])
+    assert _choose_english_voice([hazel, david]) is hazel
+
+
+@pytest.mark.F7
+def test_choose_english_voice_falls_back_to_first_voice_when_none_match() -> None:
+    french = _FakeVoice(name="Microsoft Hortense Desktop", languages=["fr-FR"])
+    german = _FakeVoice(name="Microsoft Hedda Desktop", languages=["de-DE"])
+    assert _choose_english_voice([french, german]) is french
 
 
 # ---------------------------------------------------------------------------

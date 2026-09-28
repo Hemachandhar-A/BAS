@@ -112,6 +112,22 @@ def test_run_id_must_stay_the_same_across_one_logger_instance(tmp_path: Path) ->
 
 
 @pytest.mark.F9
+def test_run_id_not_locked_in_by_a_rejected_first_write(tmp_path: Path) -> None:
+    # A bad wall_clock on the very first call must not "poison" the run_id
+    # lock-in -- a genuinely different run_id must still be accepted once
+    # the caller fixes whatever made the first attempt fail.
+    naive = datetime(2026, 9, 28, 12, 0, 0)
+    logger = JsonlLogger(tmp_path / "run.jsonl", wall_clock=lambda: naive)
+    with pytest.raises(ContractViolation):
+        logger.write(_entry(0, run_id="run-1"))
+
+    logger._wall_clock = lambda: PLACEHOLDER
+    logger.write(_entry(0, run_id="a-totally-different-run"))  # must not raise
+    row = json.loads((tmp_path / "run.jsonl").read_text(encoding="utf-8"))
+    assert row["run_id"] == "a-totally-different-run"
+
+
+@pytest.mark.F9
 def test_t_wall_optional_at_construction_is_still_stamped(tmp_path: Path) -> None:
     # LogEntry.t_wall defaults to None (ISSUES.md, 2026-09-28 CONTRACT) --
     # a caller need not supply the placeholder explicitly.
