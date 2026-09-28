@@ -10,9 +10,19 @@ derivation and the engine can never quietly disagree.
 from __future__ import annotations
 
 import argparse
+import sys
 from pathlib import Path
 
-from contracts import ExpectedDeviation, ExperimentDefinition, RunScript, RuntimeConfig, StateEvent
+from pydantic import ValidationError
+
+from contracts import (
+    ContractViolation,
+    ExpectedDeviation,
+    ExperimentDefinition,
+    RunScript,
+    RuntimeConfig,
+    StateEvent,
+)
 from engine.sequence import SequenceEngine
 
 
@@ -66,9 +76,15 @@ def main(argv: list[str] | None = None) -> int:
 
     experiment = ExperimentDefinition.from_json(args.experiment)
     stale: list[Path] = []
+    failed: list[Path] = []
     for path in _iter_scripts(args.runs_dir):
-        script = RunScript.model_validate_json(path.read_text(encoding="utf-8"))
-        expected = derive_expected_deviations(experiment, script.performed_steps)
+        try:
+            script = RunScript.model_validate_json(path.read_text(encoding="utf-8"))
+            expected = derive_expected_deviations(experiment, script.performed_steps)
+        except (ValidationError, ContractViolation) as exc:
+            failed.append(path)
+            print(f"error: {path}: {exc}", file=sys.stderr)
+            continue
         if script.expected_deviations != expected:
             stale.append(path)
             if args.write:
@@ -78,7 +94,7 @@ def main(argv: list[str] | None = None) -> int:
     verb = "updated" if args.write else "stale"
     for path in stale:
         print(f"{verb}: {path}")
-    if stale and not args.write:
+    if failed or (stale and not args.write):
         return 1
     return 0
 

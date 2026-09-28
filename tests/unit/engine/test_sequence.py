@@ -255,6 +255,85 @@ def test_unknown_step_id_raises_contract_violation(experiment: ExperimentDefinit
 
 
 @pytest.mark.F5
+@pytest.mark.F6
+def test_multiple_steps_skipped_at_once(experiment: ExperimentDefinition) -> None:
+    # s1, then s4 directly: both s2 and s3 are still pending and before s4,
+    # so both are reported skipped in canonical order by a single omission.
+    engine, events = _run(experiment, ["s1", "s4"])
+
+    deviations = [e for e in events if e.kind == "deviation_detected"]
+    assert len(deviations) == 1
+    assert deviations[0].deviation_type == "omission"
+    assert deviations[0].skipped_step_ids == ["s2", "s3"]
+    assert deviations[0].speak == (
+        f"Step skipped: {_display_name(experiment, 's2')}, {_display_name(experiment, 's3')}"
+    )
+
+    completed = [e for e in events if e.kind == "run_completed"]
+    assert len(completed) == 1
+    assert completed[0].summary is not None
+    assert completed[0].summary.skipped_step_ids == ["s2", "s3"]
+    assert completed[0].summary.all_steps_done is False
+    assert engine.run_state == "completed"
+
+
+@pytest.mark.F5
+def test_events_after_double_skip_completion_are_ignored(
+    experiment: ExperimentDefinition,
+) -> None:
+    # s4 (last step) completes the run right after s1; s2 and s3 arriving
+    # late must be silently ignored, not scored as out_of_order -- the
+    # completion cutoff applies regardless of how many steps were skipped.
+    engine, events = _run(experiment, ["s1", "s4", "s2", "s3"])
+
+    assert engine.run_state == "completed"
+    deviations = [e for e in events if e.kind == "deviation_detected"]
+    assert len(deviations) == 1
+    assert deviations[0].deviation_type == "omission"
+    completed = [e for e in events if e.kind == "run_completed"]
+    assert completed[0].summary is not None
+    assert completed[0].summary.observed_sequence == ["s1", "s4"]
+
+
+@pytest.mark.F5
+def test_single_step_experiment_completes_on_first_confirmation() -> None:
+    single = ExperimentDefinition.model_validate(
+        {
+            "experiment_id": "single_step",
+            "version": "1",
+            "classes": ["item_a"],
+            "steps": [
+                {
+                    "step_id": "only",
+                    "display_name": "Only step",
+                    "say": "Do the only step",
+                    "when": [{"type": "present", "label": "item_a"}],
+                }
+            ],
+        }
+    )
+    engine = SequenceEngine(single, RuntimeConfig())
+    engine.start(0.0, run_id="single-run")
+    events = engine.on_state_event(
+        StateEvent(t=1.0, step_id="only", confidence=1.0, uncertain=False)
+    )
+
+    kinds = [e.kind for e in events]
+    assert kinds == ["step_confirmed", "run_completed"]
+    assert events[0].speak is None  # no next step to narrate
+    summary = events[1].summary
+    assert summary is not None
+    assert summary.all_steps_done is True
+    assert summary.pos == pytest.approx(1.0)
+    assert engine.run_state == "completed"
+
+    # a second event for the same (now-completed) step is ignored, not a repeat
+    assert engine.on_state_event(
+        StateEvent(t=2.0, step_id="only", confidence=1.0, uncertain=False)
+    ) == []
+
+
+@pytest.mark.F5
 def test_swapping_the_last_pair_reports_skipped_not_out_of_order(
     experiment: ExperimentDefinition,
 ) -> None:
@@ -310,3 +389,63 @@ def test_determinism_same_input_same_output(experiment: ExperimentDefinition) ->
     _, events_a = _run(experiment, performed, run_id="run-a")
     _, events_b = _run(experiment, performed, run_id="run-a")
     assert events_a == events_b
+
+
+# ---------------------------------------------------------------------------
+# start() re-entrancy: a caller must finish() before starting a fresh run.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.F5
+def test_start_while_running_raises_contract_violation(
+    experiment: ExperimentDefinition,
+) -> None:
+    engine = SequenceEngine(experiment, RuntimeConfig())
+    engine.start(0.0, run_id="run-1")
+    engine.on_state_event(StateEvent(t=1.0, step_id="s1", confidence=1.0, uncertain=False))
+
+    with pytest.raises(ContractViolation):
+        engine.start(2.0, run_id="run-2")
+
+    # the in-progress run-1 state must survive the rejected start() call
+    assert engine.run_state == "running"
+    snapshot = {s.step_id: s.status for s in engine.snapshot()}
+    assert snapshot["s1"] == "confirmed"
+
+
+@pytest.mark.F5
+def test_engine_is_reusable_after_finish(experiment: ExperimentDefinition) -> None:
+    engine = SequenceEngine(experiment, RuntimeConfig())
+    engine.start(0.0, run_id="run-1")
+    engine.on_state_event(StateEvent(t=1.0, step_id="s1", confidence=1.0, uncertain=False))
+    engine.finish(2.0)
+    assert engine.run_state == "completed"
+
+    # start() after finish() must succeed and not leak run-1's state
+    engine.start(3.0, run_id="run-2")
+    assert engine.run_state == "running"
+    snapshot = {s.step_id: s.status for s in engine.snapshot()}
+    assert all(status == "pending" for status in snapshot.values())
+
+    events = engine.on_state_event(
+        StateEvent(t=4.0, step_id="s1", confidence=1.0, uncertain=False)
+    )
+    assert events[0].kind == "step_confirmed"
+
+
+@pytest.mark.F5
+def test_engine_is_reusable_after_natural_completion(
+    experiment: ExperimentDefinition,
+) -> None:
+    engine, _ = _run(experiment, ["s1", "s2", "s3", "s4"], run_id="run-1")
+    assert engine.run_state == "completed"
+
+    engine.start(10.0, run_id="run-2")
+    events = engine.on_state_event(
+        StateEvent(t=11.0, step_id="s1", confidence=1.0, uncertain=False)
+    )
+    assert events[0].kind == "step_confirmed"
+    # a fresh run's summary must not carry over run-1's observed sequence
+    finish_events = engine.finish(12.0)
+    assert finish_events[0].summary is not None
+    assert finish_events[0].summary.observed_sequence == ["s1"]

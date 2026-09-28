@@ -119,3 +119,73 @@ def test_cli_is_a_noop_on_fresh_scripts(tmp_path: Path) -> None:
 
     rc = main(["--experiment", str(FIXTURE_PATH), "--write", str(runs_dir)])
     assert rc == 0
+
+
+@pytest.mark.F5
+def test_cli_on_missing_runs_dir_is_a_noop(tmp_path: Path) -> None:
+    # runs/ may not exist yet (before the pilot is recorded) -- must not crash.
+    rc = main(["--experiment", str(FIXTURE_PATH), "--write", str(tmp_path / "no_such_dir")])
+    assert rc == 0
+
+
+@pytest.mark.F5
+def test_cli_reports_one_bad_script_without_crashing_the_batch(tmp_path: Path) -> None:
+    runs_dir = tmp_path / "runs"
+
+    good_dir = runs_dir / "good-run"
+    good_dir.mkdir(parents=True)
+    _write_script(good_dir / "script.json", expected_deviations=[])
+
+    # a script referencing a step_id that doesn't exist in the experiment
+    # -- e.g. a typo in a hand-declared performed_steps list -- must be
+    # reported and skipped, not crash the whole --write run.
+    bad_dir = runs_dir / "bad-run"
+    bad_dir.mkdir(parents=True)
+    bad_script = {
+        "run_id": "bad-run",
+        "experiment_id": "fixture_4step",
+        "script_type": "skip",
+        "split": "train",
+        "fps": 15.0,
+        "camera_setup_id": "s1",
+        "operator": "o1",
+        "performed_steps": ["s1", "s99_typo"],
+        "expected_deviations": [],
+    }
+    (bad_dir / "script.json").write_text(json.dumps(bad_script), encoding="utf-8")
+
+    rc = main(["--experiment", str(FIXTURE_PATH), "--write", str(runs_dir)])
+    assert rc == 1
+
+    # the good script was still processed and updated despite the bad one
+    written = json.loads((good_dir / "script.json").read_text(encoding="utf-8"))
+    assert written["expected_deviations"] == [
+        {"deviation_type": "omission", "step_ids": ["s2"]}
+    ]
+    # the bad script was left untouched, not corrupted
+    untouched = json.loads((bad_dir / "script.json").read_text(encoding="utf-8"))
+    assert untouched["expected_deviations"] == []
+
+
+@pytest.mark.F5
+def test_cli_reports_malformed_json_without_crashing_the_batch(tmp_path: Path) -> None:
+    runs_dir = tmp_path / "runs"
+
+    good_dir = runs_dir / "good-run"
+    good_dir.mkdir(parents=True)
+    _write_script(good_dir / "script.json", expected_deviations=[])
+
+    malformed_dir = runs_dir / "malformed-run"
+    malformed_dir.mkdir(parents=True)
+    # missing several required RunScript fields entirely
+    (malformed_dir / "script.json").write_text(
+        json.dumps({"run_id": "malformed-run"}), encoding="utf-8"
+    )
+
+    rc = main(["--experiment", str(FIXTURE_PATH), "--write", str(runs_dir)])
+    assert rc == 1
+
+    written = json.loads((good_dir / "script.json").read_text(encoding="utf-8"))
+    assert written["expected_deviations"] == [
+        {"deviation_type": "omission", "step_ids": ["s2"]}
+    ]
