@@ -34,6 +34,7 @@ import logging
 import threading
 import time
 import uuid
+from collections import deque
 from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
@@ -170,6 +171,14 @@ class Router:
         self._lock = threading.RLock()
 
     @property
+    def engine(self) -> Engine:
+        """Read-only access for server/app.py's ``GET /api/status`` handler
+        (F12), which needs ``Engine.snapshot()`` to render step statuses.
+        Handlers only ever read this -- they never call a mutating method
+        on it directly (run control goes through ``start``/``reset`` above)."""
+        return self._engine
+
+    @property
     def run_id(self) -> str | None:
         with self._lock:
             return self._run_id if not self._idle_armed else self._pending_run_id
@@ -283,6 +292,28 @@ def _default_recorder_factory(path: Path, fps: float) -> Recorder:
     return Recorder(path, fps)
 
 
+class _FpsMeter:
+    """Measured processing rate over the last ``window`` successfully
+    processed frames (F12's ``StatusResponse.fps`` -- diagnostic only, not
+    used by any perception/state/engine logic, so this is not a "clock
+    read" under AGENTS.md rule 8). ``None`` until at least two frames have
+    been processed."""
+
+    def __init__(self, window: int = 30) -> None:
+        self._times: deque[float] = deque(maxlen=window)
+
+    def tick(self, now: float) -> None:
+        self._times.append(now)
+
+    def value(self) -> float | None:
+        if len(self._times) < 2:
+            return None
+        span = self._times[-1] - self._times[0]
+        if span <= 0.0:
+            return None
+        return (len(self._times) - 1) / span
+
+
 class RuntimeLoop:
     """Threaded orchestration (essential-features.md section 0): a capture
     thread feeding ``LatestFrameStore`` (+ the recorder queue) and a
@@ -320,10 +351,25 @@ class RuntimeLoop:
         self._last_frame_t: float = 0.0
         self._feed_ok = True
         self._fatal_error: BaseException | None = None
+        self._fps_meter = _FpsMeter()
 
     @property
     def feed_ok(self) -> bool:
         return self._feed_ok
+
+    @property
+    def fps(self) -> float | None:
+        """Measured processing rate (server/app.py's ``StatusResponse.fps``,
+        F12) -- ``None`` until enough frames have been processed to measure
+        a rate."""
+        return self._fps_meter.value()
+
+    @property
+    def frame_store(self) -> LatestFrameStore:
+        """The raw-frame store server/app.py's ``/video_feed`` reads from
+        (F10) -- the same store the capture thread ``put()``s into, read-only
+        from the handler's side."""
+        return self._store
 
     @property
     def stopped(self) -> bool:
@@ -446,6 +492,7 @@ class RuntimeLoop:
                     )
                     continue
                 self._router.process_perception_frame(pframe)
+                self._fps_meter.tick(now)
             except Exception as exc:
                 # Anything else (StateTracker/Engine/LogSink -- a genuine
                 # ContractViolation, or the feed watchdog's own log write)
