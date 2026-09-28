@@ -91,6 +91,9 @@ def _worker_main(
         voice = _choose_english_voice(engine.getProperty("voices") or [])
         if voice is not None:
             engine.setProperty("voice", getattr(voice, "id", voice))
+            logger.info("TTSWorker: using voice %r", getattr(voice, "name", voice))
+        else:
+            logger.info("TTSWorker: no English voice found, using engine default")
         degraded = False
     except Exception:
         logger.warning("TTSWorker: engine init failed, degrading to silent no-op", exc_info=True)
@@ -140,8 +143,11 @@ class TTSWorker:
 
     def wait_ready(self, timeout: float | None = None) -> bool:
         """Blocks until the current worker process has finished
-        initializing (or timed out). Never called from ``say()`` -- only by
-        callers measuring restart latency."""
+        initializing (or timed out; default ``ready_timeout_s``). Never
+        called from ``say()`` -- only by callers measuring restart
+        latency."""
+        if timeout is None:
+            timeout = self._ready_timeout_s
         return self._ready.wait(timeout)
 
     def say(self, text: str, priority: SpeakPriority) -> None:
@@ -160,6 +166,11 @@ class TTSWorker:
                 self._last_alert_text = text
                 self._last_alert_at = now
                 self._restart()
+            elif self._process is None or not self._process.is_alive():
+                # The worker crashed on its own (not via our terminate()) --
+                # e.g. a driver fault inside pyttsx3/SAPI5. Recover instead
+                # of silently queuing into a process nobody will ever drain.
+                self._spawn()
             assert self._queue is not None
             self._queue.put_nowait((text, priority))
         except Exception:
@@ -169,11 +180,17 @@ class TTSWorker:
         if self._closed:
             return
         self._closed = True
+        process = self._process
         try:
             assert self._queue is not None
             self._queue.put_nowait(None)
         except Exception:
             pass
+        if process is not None and process.is_alive():
+            # Give the worker a bounded chance to exit on its own by
+            # reading the sentinel above (clean pyttsx3/COM shutdown)
+            # before falling back to a hard terminate.
+            process.join(timeout=1.0)
         self._terminate_process()
 
     def _spawn(self) -> None:
@@ -199,13 +216,18 @@ class TTSWorker:
 
 class FakeSpeaker:
     """Implements ``contracts.Speaker``. Test double: records every call in
-    order, no process, no audio. Used by every golden test."""
+    order, no process, no audio. Used by every golden test. Mirrors
+    ``TTSWorker``'s post-``close()`` behavior (calls are silently dropped)
+    so a golden asserting "nothing spoken after shutdown" behaves the same
+    against either implementation."""
 
     def __init__(self) -> None:
         self.calls: list[tuple[str, SpeakPriority]] = []
         self.closed = False
 
     def say(self, text: str, priority: SpeakPriority) -> None:
+        if self.closed:
+            return
         self.calls.append((text, priority))
 
     def close(self) -> None:

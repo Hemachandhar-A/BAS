@@ -21,6 +21,13 @@ def _raising_engine_factory():
     raise RuntimeError("no audio device")
 
 
+def _slow_null_engine_factory():
+    """Module-level (picklable) stand-in for a hanging engine init, so
+    tests can exercise ``wait_ready``'s timeout without a real device."""
+    time.sleep(2.0)
+    return null_engine_factory()
+
+
 class _FakeClock:
     def __init__(self, start: float = 0.0) -> None:
         self._t = start
@@ -65,6 +72,18 @@ def test_fake_speaker_close_never_raises() -> None:
     assert speaker.closed
 
 
+@pytest.mark.F7
+def test_fake_speaker_ignores_calls_after_close() -> None:
+    # Parity with TTSWorker.say(), which also silently drops post-close
+    # calls -- a golden asserting "nothing spoken after shutdown" must
+    # behave the same against either implementation.
+    speaker = FakeSpeaker()
+    speaker.say("Stow the red sample", "info")
+    speaker.close()
+    speaker.say("Should be dropped", "alert")
+    assert speaker.calls == [("Stow the red sample", "info")]
+
+
 # ---------------------------------------------------------------------------
 # TTSWorker -- say() never blocks / never raises
 # ---------------------------------------------------------------------------
@@ -96,6 +115,51 @@ def test_say_never_raises_if_restart_fails(
 
     monkeypatch.setattr(worker._ctx, "Process", _boom)
     worker.say("alert text", "alert")  # must not raise despite the failed restart
+
+
+@pytest.mark.F7
+def test_say_recovers_from_a_crashed_worker_process(worker: TTSWorker) -> None:
+    # Simulate the worker dying on its own (e.g. a driver fault), bypassing
+    # our own _terminate_process() -- self._process still points at the
+    # now-dead Process object, exactly like an unexpected crash would.
+    worker._process.terminate()
+    worker._process.join(timeout=2.0)
+    assert not worker._process.is_alive()
+    dead_process = worker._process
+
+    worker.say("Stow the red sample", "info")
+
+    assert worker._process is not dead_process
+    assert worker._process.is_alive()
+
+
+@pytest.mark.F7
+def test_wait_ready_default_timeout_uses_ready_timeout_s() -> None:
+    worker = TTSWorker(engine_factory=_slow_null_engine_factory, ready_timeout_s=0.2)
+    try:
+        start = time.perf_counter()
+        assert worker.wait_ready() is False  # init takes 2s, default timeout is 0.2s
+        assert time.perf_counter() - start < 1.5
+    finally:
+        worker.close()
+
+
+@pytest.mark.F7
+def test_close_lets_a_responsive_worker_exit_without_forced_terminate(
+    worker: TTSWorker,
+) -> None:
+    process = worker._process
+    calls: list[None] = []
+    original_terminate = process.terminate
+
+    def _spy_terminate() -> None:
+        calls.append(None)
+        original_terminate()
+
+    process.terminate = _spy_terminate  # type: ignore[method-assign]
+    worker.close()
+    assert not process.is_alive()
+    assert calls == []  # exited via the sentinel, no forced terminate needed
 
 
 # ---------------------------------------------------------------------------
