@@ -189,3 +189,27 @@ def test_cli_reports_malformed_json_without_crashing_the_batch(tmp_path: Path) -
     assert written["expected_deviations"] == [
         {"deviation_type": "omission", "step_ids": ["s2"]}
     ]
+
+
+@pytest.mark.F5
+def test_cli_reports_truncated_json_without_crashing_the_batch(tmp_path: Path) -> None:
+    # e.g. a process killed mid-write, leaving syntactically broken JSON.
+    runs_dir = tmp_path / "runs"
+
+    good_dir = runs_dir / "good-run"
+    good_dir.mkdir(parents=True)
+    _write_script(good_dir / "script.json", expected_deviations=[])
+
+    truncated_dir = runs_dir / "truncated-run"
+    truncated_dir.mkdir(parents=True)
+    (truncated_dir / "script.json").write_text(
+        '{"run_id": "truncated-run", "experiment_i', encoding="utf-8"
+    )
+
+    rc = main(["--experiment", str(FIXTURE_PATH), "--write", str(runs_dir)])
+    assert rc == 1
+
+    written = json.loads((good_dir / "script.json").read_text(encoding="utf-8"))
+    assert written["expected_deviations"] == [
+        {"deviation_type": "omission", "step_ids": ["s2"]}
+    ]
