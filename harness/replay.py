@@ -184,24 +184,29 @@ def replay_from_video(
     perception_config = perception_config or PerceptionConfig()
     runtime_config = runtime_config or RuntimeConfig()
     run_id = run_id or Path(video_path).stem
+
+    # ``source`` is opened first and everything else wrapped in try/finally
+    # from this point on, so a later construction failure (e.g.
+    # PerceptionPipeline raising) still closes the already-open source
+    # instead of leaking a file/camera handle.
     source = open_source(str(video_path))
-    perception = PerceptionPipeline(perception_config)
-    tracker = StateTracker(experiment, perception_config)
-    engine = SequenceEngine(experiment, runtime_config)
-    speaker = speaker or FakeSpeaker()
-    events: list[EngineEvent] = []
-    router = Router(
-        experiment,
-        runtime_config,
-        tracker,
-        engine,
-        speaker,
-        log_dir,
-        run_id_factory=lambda: run_id,
-        on_engine_event=events.append,
-    )
-    frames_processed = 0
     try:
+        perception = PerceptionPipeline(perception_config)
+        tracker = StateTracker(experiment, perception_config)
+        engine = SequenceEngine(experiment, runtime_config)
+        speaker = speaker or FakeSpeaker()
+        events: list[EngineEvent] = []
+        router = Router(
+            experiment,
+            runtime_config,
+            tracker,
+            engine,
+            speaker,
+            log_dir,
+            run_id_factory=lambda: run_id,
+            on_engine_event=events.append,
+        )
+        frames_processed = 0
         router.start(t=0.0)
         while True:
             frame = source.read()
@@ -210,7 +215,13 @@ def replay_from_video(
                     break
                 continue
             frames_processed += 1
-            pframe = perception.process(frame)
+            try:
+                pframe = perception.process(frame)
+            except Exception:
+                # Matches runtime/loop.py's live behavior (essential-features.md
+                # section 0, "Errors"): a single bad frame is skipped, not fatal
+                # to the whole replay.
+                continue
             router.process_perception_frame(pframe)
     finally:
         source.close()

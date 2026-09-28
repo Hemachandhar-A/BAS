@@ -161,3 +161,34 @@ def test_low_free_disk_space_warns_but_still_records(
 
     assert any("low disk space" in record.message.lower() for record in caplog.records)
     assert (tmp_path / "lowdisk.avi").exists()
+
+
+@pytest.mark.F11
+def test_a_frame_with_a_different_size_is_dropped_not_corrupting_or_disabling_the_recording(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    """A transient driver glitch reporting a different resolution must not
+    corrupt the container (writing a mismatched frame into a fixed-size
+    cv2.VideoWriter) or disable recording for the rest of the run -- only
+    that one frame is dropped."""
+    path = tmp_path / "mismatch.avi"
+    rec = Recorder(path, fps=10.0)
+    with caplog.at_level(logging.WARNING, logger=recorder_module.__name__):
+        rec.open()
+        rec.enqueue(_frame(0, height=8, width=8))  # establishes the writer's size
+        rec.enqueue(_frame(1, height=16, width=16))  # mismatched -- must be dropped
+        rec.enqueue(_frame(2, height=8, width=8))  # matches again -- must still record
+        rec.close()
+
+    assert any("dropping" in record.message.lower() for record in caplog.records)
+
+    cap = cv2.VideoCapture(str(path))
+    try:
+        assert cap.isOpened()
+        frame_count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+        assert frame_count == 2  # frame 0 and frame 2 only
+        ok, frame = cap.read()
+        assert ok
+        assert frame.shape == (8, 8, 3)
+    finally:
+        cap.release()

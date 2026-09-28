@@ -6,6 +6,8 @@ not define one yet."""
 from __future__ import annotations
 
 import json
+import sys
+import types
 from pathlib import Path
 
 import pytest
@@ -101,6 +103,92 @@ def test_replay_from_video_raises_import_error_until_perception_lands(
 ) -> None:
     with pytest.raises(ImportError):
         replay_from_video(experiment, tmp_path / "does_not_matter.mp4", log_dir=tmp_path)
+
+
+def test_replay_from_video_closes_the_source_even_if_pipeline_construction_fails(
+    experiment: ExperimentDefinition, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A resource-leak regression check: ``source`` is opened before
+    ``PerceptionPipeline`` is constructed, so a failure there must not skip
+    closing the already-open source (a real camera/file handle)."""
+    closed = []
+
+    class _FakeSource:
+        exhausted = True
+        fps = None
+
+        def read(self):
+            return None
+
+        def close(self):
+            closed.append(True)
+
+    class _FailingPipeline:
+        def __init__(self, config):
+            raise RuntimeError("pipeline construction boom")
+
+    fake_perception_pkg = types.ModuleType("perception")
+    fake_camera_mod = types.ModuleType("perception.camera")
+    fake_camera_mod.open_source = lambda path: _FakeSource()
+    fake_pipeline_mod = types.ModuleType("perception.pipeline")
+    fake_pipeline_mod.PerceptionPipeline = _FailingPipeline
+
+    monkeypatch.setitem(sys.modules, "perception", fake_perception_pkg)
+    monkeypatch.setitem(sys.modules, "perception.camera", fake_camera_mod)
+    monkeypatch.setitem(sys.modules, "perception.pipeline", fake_pipeline_mod)
+
+    with pytest.raises(RuntimeError, match="pipeline construction boom"):
+        replay_from_video(experiment, "dummy.mp4", log_dir=tmp_path)
+
+    assert closed == [True]
+
+
+def test_replay_from_video_skips_a_bad_frame_and_keeps_going(
+    experiment: ExperimentDefinition, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Matches runtime/loop.py's live behavior: a single frame that fails
+    perception is skipped, not fatal to the whole replay."""
+    frame_ids = [0, 1, 2]
+
+    class _FakeSource:
+        fps = None
+
+        def __init__(self):
+            self._ids = list(frame_ids)
+            self.exhausted = False
+
+        def read(self):
+            if not self._ids:
+                self.exhausted = True
+                return None
+            frame_id = self._ids.pop(0)
+            return types.SimpleNamespace(frame_id=frame_id, t=float(frame_id))
+
+        def close(self):
+            pass
+
+    class _FlakyPipeline:
+        def __init__(self, config):
+            pass
+
+        def process(self, frame):
+            if frame.frame_id == 1:
+                raise RuntimeError("boom on frame 1")
+            return PerceptionFrame(frame_id=frame.frame_id, t=frame.t)
+
+    fake_perception_pkg = types.ModuleType("perception")
+    fake_camera_mod = types.ModuleType("perception.camera")
+    fake_camera_mod.open_source = lambda path: _FakeSource()
+    fake_pipeline_mod = types.ModuleType("perception.pipeline")
+    fake_pipeline_mod.PerceptionPipeline = _FlakyPipeline
+
+    monkeypatch.setitem(sys.modules, "perception", fake_perception_pkg)
+    monkeypatch.setitem(sys.modules, "perception.camera", fake_camera_mod)
+    monkeypatch.setitem(sys.modules, "perception.pipeline", fake_pipeline_mod)
+
+    result = replay_from_video(experiment, "dummy.mp4", log_dir=tmp_path, run_id="flaky-video")
+
+    assert result.frames_processed == 3  # frame 1 was attempted and counted, then skipped
 
 
 # ---------------------------------------------------------------------------
