@@ -624,6 +624,40 @@ def test_build_report_has_the_stage_8_shape_and_notes_hands_unmeasured() -> None
     json.dumps(report)
 
 
+def test_build_report_names_the_forward_path_and_query_count_per_backend() -> None:
+    # This session verified empirically (not assumed) that the plain
+    # PyTorch path is 3900 queries, while the optimized (.inference())
+    # PyTorch path and the ONNX path are both 300 -- so "optimized" and
+    # "onnx" are the fair query-count-matched comparison, not "plain" and
+    # "onnx". The report must say so explicitly per candidate present.
+    records = [
+        _fake_record("rfdetr_nano_pytorch__full", 1, 1, 10.0),
+        _fake_record("rfdetr_nano_pytorch_optimized__full", 1, 2, 8.0),
+        _fake_record("rfdetr_nano_onnxruntime__full", 1, 3, 5.0),
+        _fake_record("yolo11n_pytorch__full", 1, 4, 3.0),
+    ]
+
+    report = benchmark_cpu.build_report(
+        records,
+        [],
+        warmup_frames=0,
+        timed_frames=1,
+        frame_width=10,
+        frame_height=8,
+        repeats=1,
+        seed=0,
+        cooldown_s=0.0,
+        num_threads=1,
+    )
+
+    forward_paths = report["forward_paths"]
+    assert forward_paths["rfdetr_nano_pytorch__full"]["queries"] == 3900
+    assert forward_paths["rfdetr_nano_pytorch_optimized__full"]["queries"] == 300
+    assert forward_paths["rfdetr_nano_onnxruntime__full"]["queries"] == 300
+    assert forward_paths["yolo11n_pytorch__full"]["queries"] is None
+    json.dumps(report)  # still JSON-serializable
+
+
 def test_build_report_includes_the_parity_result_when_given() -> None:
     records = [_fake_record("fake_model", 1, 1, 10.0)]
     parity = benchmark_cpu.ParityResult(

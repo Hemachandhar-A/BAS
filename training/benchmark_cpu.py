@@ -772,6 +772,41 @@ def summarize_by_position(records: list[dict[str, Any]]) -> dict[str, Any]:
     }
 
 
+FORWARD_PATH_INFO: dict[str, dict[str, Any]] = {
+    # Verified empirically this session (ISSUES.md 2026-09-29), not
+    # assumed: model.model.model(tensor) (plain forward(), what predict()'s
+    # own eager path calls) returns (1, 3900, *) on this checkpoint.
+    "rfdetr_nano_pytorch": {
+        "forward": "plain forward() -- eager, unoptimized (predict()'s own internal call)",
+        "queries": 3900,
+    },
+    # .inference() compiles via torch.jit.trace into inference_model;
+    # verified empirically that THIS path is also reduced to 300 queries,
+    # matching the ONNX export exactly -- so "optimized" and "onnx" are
+    # the apples-to-apples pair here, not "plain" and "onnx".
+    "rfdetr_nano_pytorch_optimized": {
+        "forward": "torchscript .inference()-compiled forward (export-mode "
+        "query reduction applied internally, verified empirically)",
+        "queries": 300,
+    },
+    # forward_export, switched in via rfdetr's private
+    # _switch_to_export_mode before tracing (ISSUES.md 2026-09-29).
+    "rfdetr_nano_onnxruntime": {
+        "forward": "ONNX export graph (forward_export)",
+        "queries": 300,
+    },
+    "yolo11n_pytorch": {
+        "forward": "YOLO11n architecture -- not a DETR query head, no comparable count",
+        "queries": None,
+    },
+}
+
+
+def _forward_path_for(candidate_name: str) -> dict[str, Any] | None:
+    base_name = candidate_name.split("__", 1)[0]
+    return FORWARD_PATH_INFO.get(base_name)
+
+
 def build_report(
     records: list[dict[str, Any]],
     skipped: list[dict[str, str]],
@@ -785,6 +820,10 @@ def build_report(
     num_threads: int,
     parity: ParityResult | None = None,
 ) -> dict[str, Any]:
+    candidate_names = {r["candidate"] for r in records}
+    forward_paths = {
+        name: info for name in candidate_names if (info := _forward_path_for(name)) is not None
+    }
     return {
         "generated_at": datetime.now(UTC).isoformat(),
         "provisional": True,
@@ -796,6 +835,7 @@ def build_report(
             "num_threads_requested": num_threads,
             "candidate_order": "shuffled independently each repeat round, fixed seed",
         },
+        "forward_paths": forward_paths,
         "warmup_frames": warmup_frames,
         "timed_frames": timed_frames,
         "frame_size": [frame_width, frame_height],
