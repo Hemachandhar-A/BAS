@@ -644,3 +644,93 @@ forward into the zero-shot prompts when `training/prompts.yaml` is written.
 - Context: the 2026-09-28 P2.2 DECISION entry above flagged that `contracts.Engine` has no method that ever reproduces `run_state == "idle"` after a run has started (`finish()`/natural completion both leave it at `"completed"`), and asked whoever builds `runtime/loop.py` to resolve it explicitly.
 - Resolved: `runtime/loop.py`'s `Router` tracks its own `_idle_armed` flag (set at construction and by `reset()`, cleared by `start()`); its `run_state` property reports `"idle"` whenever that flag is set, regardless of what `Engine.run_state` itself says. `contracts.py` is untouched -- the gap is closed at the runtime layer, as the P2.2 entry's second option proposed. Regression tests: `tests/unit/runtime/test_router.py::test_router_reports_idle_before_start_and_after_reset`, `::test_router_reset_while_idle_is_a_noop_for_the_engine`.
 - Status: RESOLVED (P2.4).
+
+---
+
+## 2026-09-30 P2 (covered by the Lead) - p2-runtime rebased onto develop, plus one cross-role P1 fix
+
+- **Who:** the Lead, running this session as P2 per the 2026-09-30 "P1 DECISION - P2 unavailable" entry above.
+  P2-role only for everything except the one fix below: touched only `p2-runtime`, its own owned directories,
+  and this file. No edit to `training/`, `contracts.py` or `config/experiment.json`.
+- **Cross-role authorization (the one exception):** this session's pre-commit and pre-push hooks both run the
+  entire `scripts/check.py`, unscoped to what is being committed -- so the `perception/`-side bug found below
+  blocked *every* commit on this branch, including pure P2 work, not just anything touching `perception/`.
+  P1 (the owner of `perception/`), in chat, authorized this session -- for this one fix only -- to edit
+  `perception/record.py` and `tests/unit/perception/test_record.py` on `p2-runtime`. Everything else in this
+  session stayed inside P2's owned directories. Commits `c961206` (the fix) and `bde32ec` (the unrelated P2
+  ruff fix, below) are separate and clearly labelled.
+- **Safety backup, before anything else:** `origin/p2-runtime` was confirmed still at `f0e294d` (its P2.5
+  round-2 head), then pushed unchanged to a new branch `origin/p2-runtime-pre-rebase` (old head `f0e294d`) so
+  the pre-rebase state is recoverable. Nothing on `origin/p2-runtime` was overwritten by that push.
+- **Rebase:** `git rebase origin/develop` onto `ea15a3e` (PR #7 merged: P1 Phase 2 Part A/B + the B1 correction
+  + the P2-unavailable DECISION). **Zero conflicts** -- all 14 P2 commits (P2.1 StateTracker through P2.5
+  round-2) replayed cleanly; `p2-runtime` is now 46 commits ahead of the old merge base. `ISSUES.md`'s
+  append-only/merge=union convention was never exercised because there was nothing to merge.
+- **F7 correction to this session's own brief:** the task brief for this session described F7
+  (`test_degrades_quietly_when_engine_init_fails`, `tests/unit/outputs/test_tts.py`) as red with
+  `ModuleNotFoundError: No module named 'tests.unit'` inside a spawned child process on Windows. That does
+  **not** reproduce on this rebased branch: the test passed 5/5 in isolation and in the full suite, both before
+  and after the rebase. Checked why: `_raising_engine_factory` (the picklable-under-`spawn` stand-in for a
+  broken audio engine that this test passes to `TTSWorker`) has been a module-level function, with a docstring
+  explicitly calling out "Module-level (picklable under spawn) ...", since its very first commit
+  (`f4fade0`/`3886716`, P2.3: Outputs) -- `git log -p` on `tests/unit/outputs/test_tts.py` shows no version of
+  this file ever defined it as a local/nested function. There is nothing to fix here; no code was changed for
+  F7. The operator's hypothesis for the earlier red -- a one-off spawn artefact from running in a detached
+  worktree -- is plausible but **unverified**; this session found no evidence either way, only that it is not
+  the current, reproducible state. `check.py --status`: **F7 22/22 GREEN.**
+- **Real finding instead -- F14 was RED, one failure, root-caused and fixed under the cross-role
+  authorization above (commit `c961206`):** `tests/unit/perception/test_record.py::test_validate_run_flags_unknown_step_id`
+  failed with an unhandled `contracts.ContractViolation: unknown step_id 'not_a_real_step'` raised from
+  `engine/sequence.py:72` (P2-owned, working exactly per contract: it rejects an event for a step id the
+  experiment doesn't define). The call path: `perception/record.py`'s `validate_run` (P1-owned) already
+  detected unknown `performed_steps` at line 397-399 and correctly appended
+  `"performed_steps references unknown step ids: [...]"` to `result.issues` -- but then unconditionally called
+  `_expected_deviations_stale(script, experiment_path)` at line 439 regardless, which called
+  `engine.reference.derive_expected_deviations` (P2-owned) with the same invalid `performed_steps`, which fed
+  them to a real `SequenceEngine`, which correctly raised rather than silently accepting an undefined step.
+  The exception was never caught, so `validate_run` crashed before it could return the `ValidationResult` it
+  had already started building. **This was always latent, not introduced by this rebase or by any P2 code in
+  it**: `_expected_deviations_stale`'s own comment says `# engine/reference.py hasn't landed yet (P2.2)` -- on
+  `develop` alone (without P2's branch), importing `engine.reference` raises `ImportError`, which
+  `_expected_deviations_stale` caught and turned into a silent no-op (`return None`), so the crash was
+  structurally unreachable until a branch carrying both P1's test and P2's `engine/reference.py` existed at
+  once. This rebase was the first time that happened. **Fix (commit `c961206`, cross-role, P1's files):** in
+  `validate_run`, skip the call to `_expected_deviations_stale` entirely when `unknown_steps` is already
+  non-empty -- the staleness check is meaningless for a script with invalid step ids, and the issue is already
+  recorded. `engine/sequence.py`'s hard rejection of unknown step ids is correct behavior and was not touched
+  or loosened. Test-first: added
+  `test_validate_run_flags_stale_expected_deviations_for_valid_step_ids` (real, valid step ids that skip
+  `red_in_tray`, stale `expected_deviations=[]`) first, confirmed it already passed against the *unfixed* code
+  (proving the staleness check itself works and nothing else needed to change), confirmed
+  `test_validate_run_flags_unknown_step_id` was red, then applied the one-line guard. Both tests, and the full
+  `tests/unit/perception/test_record.py` (19 tests), pass after the fix.
+  `check.py --status`: **F14 61/61 GREEN** (was 60 total; +1 for the new coverage).
+- **Walking-skeleton smoke test (no camera, no audio):** `python -m harness.replay --script <RunScript JSON>
+  --experiment fixtures/experiment_4step.json`, performed_steps `["s1", "s3", "s4"]` (step `s2` omitted) against
+  the `fixture_4step` experiment. Ran end to end through `SequenceEngine` + `Router` + `JsonlLogger` (this
+  mode bypasses `StateTracker` by design, per `harness/replay.py`'s own docstring, to exercise the router/log
+  path without needing `PerceptionFrame` data): 3 frames processed, the omitted `s2` produced exactly one
+  `deviation_detected` event ("Step skipped: Step two") and one matching JSONL line, run completed with
+  `pos=0.75`, `skipped_step_ids=["s2"]` -- the GOLD-1 pattern (a skipped step -> exactly one alert, one log
+  line), confirmed working through the loop. `runs_out/` (git-ignored) and the temporary script JSON were
+  removed after; `git status` is clean.
+- **Note for P2:** re-fetch -- your local `p2-runtime` is stale. Reset it to `origin/p2-runtime` after reading
+  this entry (`git fetch origin && git reset --hard origin/p2-runtime`, after saving any local-only work you
+  don't want to lose). Nothing you built was changed in content, only rebased onto `develop`'s new head.
+- **Retro-review still owed:** per the P2-unavailable DECISION above, P2 retro-reviews this rebase (and every
+  PR the Lead merged while P2 was out) once back, using the normal PR-review checklist -- this now includes
+  retro-reviewing the cross-role `perception/record.py` fix too, since P2 didn't write or review it either.
+- **Unrelated pre-existing lint fix, in P2's own directories (commit `bde32ec`):** `check.py --quick` runs
+  `ruff check .` before pytest, and its output was truncated out of view in this session's own first two checks
+  (only the pytest tail was inspected) -- `ruff` was actually failing the whole time on two pre-existing `I001`
+  (unsorted import block) findings, in `harness/replay.py` and `scripts/dev.py` (both P2-owned). Confirmed via
+  `origin/p2-runtime-pre-rebase` that both predate this session and this rebase entirely -- not introduced by
+  anything here. Fixed with `ruff check --fix` (pure import reordering, `perception.pipeline` before
+  `perception.camera`; no behavior change, both still imported lazily as before).
+- **Why this took four commits, not one:** the pre-commit/pre-push hooks run the whole suite unscoped, so
+  nothing could be committed at all until the `perception/` blocker was cleared -- see the cross-role
+  authorization above. Kept separate on purpose: `c961206` (P1 fix, cross-role), `bde32ec` (P2 ruff fix), this
+  entry (P2, `ISSUES.md` only), on top of the plain rebase.
+- Status: RESOLVED for this branch. `python scripts/check.py`: full suite green. `python scripts/check.py
+  --status`: **F1-F14 all GREEN** (F2 has no tests, as before). Nothing in this entry is merged into
+  `develop`; the PR from `p2-runtime` into `develop` is opened by the operator, by hand.
