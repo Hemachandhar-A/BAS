@@ -360,26 +360,36 @@ def extract_pytorch_raw_outputs(
     dimension squeezed, for `check_raw_output_parity`. Duck-typed against
     RFDETR's documented internal shape (``model._is_optimized_for_inference``,
     ``model.model.model`` / ``model.model.inference_model``,
-    ``model._optimized_dtype``) rather than a public method -- this is
-    Phase-2-only glue, exercised here only against a fake stand-in;
-    re-verify against the real object before Phase 2 feeds it a real
-    model. On the optimized path, ``predict()`` casts the input tensor to
-    ``model._optimized_dtype`` before calling ``inference_model`` (`detr.py`'s
-    ``predictions = inference_model(batch_tensor.to(dtype=self._optimized_dtype))``)
-    -- omitting that cast here would time/compare a call `predict()` never
+    ``model._optimized_dtype``,
+    ``model._ensure_eval_mode_for_unoptimized_inference``) rather than a
+    public method -- this is Phase-2-only glue, exercised here only
+    against a fake stand-in; re-verify against the real object before
+    Phase 2 feeds it a real model. On the optimized path, ``predict()``
+    casts the input tensor to ``model._optimized_dtype`` before calling
+    ``inference_model`` (`detr.py`'s ``predictions =
+    inference_model(batch_tensor.to(dtype=self._optimized_dtype))``) --
+    omitting that cast here would time/compare a call `predict()` never
     actually makes (ISSUES.md 2026-09-29 P2 review, finding 3).
 
-    **Not the same computation the ONNX export traces** (found this
-    session, empirically, not assumed): this plain ``forward()`` -- what
-    ``predict()``'s own eager path also calls -- returns 3900 query/class
-    pairs on this checkpoint (``pred_logits``/``pred_boxes`` shape
-    ``(1, 3900, *)``); the exported ONNX graph's ``dets``/``labels``
-    outputs are ``(1, 300, *)``, produced by a *different* forward method
-    (``forward_export``) the export pipeline switches the model into
-    before tracing. This function is correct for the ``__network_only``
-    *timing* candidate (it measures exactly what ``predict()`` itself
-    pays); for the ONNX *parity* comparison, use
-    ``build_pytorch_export_mode_forward`` instead -- see its docstring."""
+    **On the unoptimized path, this calls RFDETR's own
+    ``_ensure_eval_mode_for_unoptimized_inference()`` before the raw
+    forward** (B1 fix, ISSUES.md 2026-09-29 P2 review, BLOCKING; the
+    2026-09-30 correction entry). Without it, a freshly built model is still
+    in *training* mode (confirmed empirically against the real checkpoint:
+    a fresh ``RFDETRNano()``'s inner module reports ``.training is True``
+    until ``predict()`` -- or this call -- first flips it), and
+    ``rfdetr/models/lwdetr.py`` branches its query count on exactly that
+    flag: ``num_queries * group_detr`` (3900 on this checkpoint) in
+    training mode, ``num_queries`` (300) in eval. The earlier version of
+    this docstring attributed the ``(1, 3900, *)`` vs ``(1, 300, *)``
+    shape difference to a *different forward method*
+    (``forward_export``); that was wrong -- ``forward_export`` is a
+    separate, later switch (``rfdetr.export._backend._switch_to_export_mode``,
+    applied inside ``ExportBase.__call__``, not by ``prepare_export_graph``)
+    that this function never touches. The shape difference was always
+    just training vs. eval mode. This function's output now matches
+    ``predict()``'s own eager path unconditionally, on every call, for
+    both the ``__network_only`` *timing* candidate and any other caller."""
     import torch
 
     with torch.no_grad():
@@ -387,6 +397,7 @@ def extract_pytorch_raw_outputs(
             tensor = preprocessed_tensor.to(dtype=model._optimized_dtype)
             output = model.model.inference_model(tensor)
         else:
+            model._ensure_eval_mode_for_unoptimized_inference()
             output = model.model.model(preprocessed_tensor)
     if isinstance(output, dict):
         boxes, logits = output["pred_boxes"], output["pred_logits"]

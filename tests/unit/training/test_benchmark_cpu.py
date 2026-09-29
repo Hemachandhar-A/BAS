@@ -320,6 +320,15 @@ class _FakeInnerModel:
         self._boxes = boxes
         self._logits = logits
         self.last_tensor_dtype = None  # records what dtype inference_model actually received
+        # Stands in for the innermost nn.Module's real .training flag (three
+        # levels down in the real object: model.model.model.training) --
+        # simplified to one level here since the fake has no separate inner
+        # module. A fresh RFDETRNano() starts in training mode (confirmed
+        # empirically this session), which is exactly the B1 bug: an un-eval'd
+        # model.model.model(tensor) call returns num_queries * group_detr
+        # (3900) predictions instead of num_queries (300) -- ISSUES.md
+        # 2026-09-29 P2 review, BLOCKING B1.
+        self.training = True
 
     def model(self, tensor):
         self.last_tensor_dtype = tensor.dtype
@@ -349,6 +358,12 @@ class _FakeRawModel:
 
             self._optimized_dtype = torch.float64  # deliberately distinct from float32
 
+    def _ensure_eval_mode_for_unoptimized_inference(self) -> None:
+        """Duck-types RFDETR.predict()'s real gate (detr.py:2465), which
+        extract_pytorch_raw_outputs must now call too on the unoptimized
+        path (B1 fix)."""
+        self.model.training = False
+
 
 def test_extract_pytorch_raw_outputs_unoptimized_path() -> None:
     torch = pytest.importorskip("torch")
@@ -362,6 +377,29 @@ def test_extract_pytorch_raw_outputs_unoptimized_path() -> None:
     assert np.allclose(out_boxes, boxes)
     assert np.allclose(out_logits, logits)
     assert fake_model.model.last_tensor_dtype == torch.float32  # unchanged on the unoptimized path
+
+
+def test_extract_pytorch_raw_outputs_unoptimized_path_ensures_eval_mode() -> None:
+    """B1 fix (ISSUES.md 2026-09-29 P2 review, BLOCKING, confirmed empirically
+    this session against the real RFDETRNano() checkpoint): the raw forward
+    this function calls directly (model.model.model(tensor)) must never run
+    in training mode. rfdetr's lwdetr.py branches its query count on
+    self.training -- 3900 (num_queries * group_detr) in training mode, 300
+    (num_queries) in eval -- so an un-eval'd call silently returns 13x too
+    many query/box/logit slots. Only predict() used to guard this; this
+    function is the __network_only candidate's own forward path and was
+    never eval'd itself, which is exactly how it could run before the same
+    model's first predict() call in a shuffled benchmark round."""
+    torch = pytest.importorskip("torch")
+    boxes = np.array([[0.1, 0.2, 0.3, 0.4]], dtype=np.float32)
+    logits = np.array([[1.0, -2.0, 3.0]], dtype=np.float32)
+    fake_model = _FakeRawModel(boxes, logits, optimized=False)
+    assert fake_model.model.training is True  # starts in training mode, like a fresh RFDETRNano()
+    tensor = torch.zeros((1, 3, 4, 4), dtype=torch.float32)
+
+    benchmark_cpu.extract_pytorch_raw_outputs(fake_model, tensor)
+
+    assert fake_model.model.training is False  # eval mode is ensured before the raw forward call
 
 
 def test_extract_pytorch_raw_outputs_optimized_path_casts_to_optimized_dtype() -> None:
