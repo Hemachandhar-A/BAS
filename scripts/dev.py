@@ -35,8 +35,9 @@ logger = logging.getLogger(__name__)
 
 def main() -> int:
     try:
-        from perception.camera import open_source
         from perception.pipeline import PerceptionPipeline
+
+        from perception.camera import open_source
     except ImportError as exc:
         print(
             "scripts/dev.py needs perception/camera.py and perception/pipeline.py "

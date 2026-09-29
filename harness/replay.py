@@ -178,8 +178,9 @@ def replay_from_video(
     both imported lazily: as of P2.4 neither has landed (P1.1/P1.6), so
     this path only runs once they exist (R3, sanctioned cross-boundary
     call)."""
-    from perception.camera import open_source  # type: ignore[import-not-found]
     from perception.pipeline import PerceptionPipeline  # type: ignore[import-not-found]
+
+    from perception.camera import open_source  # type: ignore[import-not-found]
 
     perception_config = perception_config or PerceptionConfig()
     runtime_config = runtime_config or RuntimeConfig()
