@@ -292,7 +292,9 @@ def cmd_record(plan_path: Path, source_arg: str, experiment_path: Path) -> int:
                 row, experiment.experiment_id, source.fps or float(CAPTURE_FPS), performed_steps
             )
             write_script_json(runs_root, script)
-            row.recorded = time.strftime("%Y-%m-%d")
+            # A plain tick, not a timestamp (AGENTS.md rule 8: no clock reads
+            # in perception/ outside camera.py; ISSUES.md 2026-09-29 review).
+            row.recorded = "yes"
             row.recorded_by = row.operator
             write_plan(plan_path, rows)
             print(f"Wrote {video_path} and script.json for {row.run_id}.")
