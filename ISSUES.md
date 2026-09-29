@@ -422,3 +422,53 @@ Entry format:
 - **Real integration smoke tests this session** (cached weights only, no new downloads, small scale: 1-2 repeats, 1-2 timed frames): confirmed the two-view candidates, the `skipped` list, library-version recording, and (after the `forward_export` fix above) the real parity check all work end to end against actual RF-DETR-Nano PyTorch, RF-DETR-Nano ONNX Runtime, and YOLO11n. No `.pt`/`.pth`/`.onnx` file or `output/` directory left anywhere under the repo afterward (checked via `git status`).
 - Harness commit for these results: see the commit hash on `p1-perception` this entry's PR carries.
 - Status: RESOLVED (P1; Phase 1's PR #5 follow-up complete). Proceeding to Part B (the real, controlled multi-repeat measurement) only after confirming plug-in/power-plan status in chat, per this session's own instruction.
+
+---
+
+## 2026-09-29 P1.5-provisional RESULTS - Part B: controlled multi-repeat CPU latency (real parity, real measurement)
+- **Harness commit**: `ecaf984` on `p1-perception` (PR #7). One code addition after Part A's fixes, before any timed run: `build_report` now records a `"forward_paths"` entry per candidate naming which forward method it calls and its query count (see the query-count finding below) -- also test-covered, `check.py` green before measuring.
+- **Environment**: this machine (confirmed demo laptop), AMD Ryzen 5 5600H, 6 physical / 12 logical cores, Windows 11 (build 26200). **Plugged in, battery saver off, heavy apps closed -- confirmed by the operator in chat before any timed run** (per this session's own gate: "if any of the three is no or still blank, do not start"). **Power plan: switched to High Performance (`powercfg /setactive SCHEME_MIN`) before the first timed run, confirmed via `powercfg /getactivescheme`, restored to Balanced (`SCHEME_BALANCED`) after the last one** -- matches the earlier provisional pass, so the two sets of numbers stay comparable. Library versions (recorded in every report, this session's own addition): `torch` 2.14.0+cpu, `rfdetr` 1.11.0, `onnxruntime` 1.30.0, `ultralytics` 8.4.164. No CUDA.
+- **Parity check (B3): PASSED, both thread-count runs** -- `max_box_abs_diff` ≈ 2.99e-5, `max_logit_abs_diff` ≈ 8.68e-5 (identical to the millisecond across both runs, since it depends only on the model/export, not on thread count), both far inside tolerance (`box_atol=1e-3`, `logit_atol=1e-2`). ONNX Runtime and PyTorch's export-mode forward agree almost exactly. Both timed runs proceeded past this gate.
+- **Query-count finding, verified empirically before measuring (not assumed), answering the operator's specific ask:**
+
+  | Candidate family | Forward path timed | Queries |
+  |---|---|---|
+  | `rfdetr_nano_pytorch` (plain, unoptimized) | plain `forward()` -- what `predict()`'s own eager path calls internally | **3900** |
+  | `rfdetr_nano_pytorch_optimized` (`.inference()`-compiled) | torchscript-traced `inference_model` -- **also** reduced internally, verified empirically | **300** |
+  | `rfdetr_nano_onnxruntime` | the exported ONNX graph (`forward_export`, switched in via the private `_switch_to_export_mode` before tracing) | **300** |
+  | `yolo11n_pytorch` | YOLO11n's own architecture -- not a DETR query head | n/a |
+
+  **This means "optimized" and "onnx" are the query-count-matched, apples-to-apples pair -- not "plain" and "onnx".** The plain/unoptimized PyTorch row processes 13x more query slots per frame than either the optimized or the ONNX row; its latency is not directly comparable to ONNX's on architecture grounds alone, independent of backend. Both `__full` and `__network_only` rows below are labelled by candidate family, so this table applies to all of them.
+- **Results, both timing views, both thread counts, all 3 repeats** (20 warm-up frames excluded, 200 timed frames per repeat, synthetic 1280x720 BGR frames, seed 0, 1s cooldown between every run, candidate order shuffled independently each round):
+
+  **Physical cores (`--num-threads 6`):**
+
+  | Candidate | Repeat 1 / 2 / 3 (ms) | Mean (ms) | fps (of mean) |
+  |---|---|---|---|
+  | `rfdetr_nano_pytorch__full` | 128.4 / 132.1 / 133.9 | 131.5 | 7.61 |
+  | `rfdetr_nano_pytorch__network_only` | **288.5** / 124.8 / 128.5 | 180.6 (skewed, see below) | 5.54 (skewed) |
+  | `rfdetr_nano_pytorch_optimized__full` | 118.7 / 130.7 / 127.5 | 125.6 | 7.96 |
+  | `rfdetr_nano_pytorch_optimized__network_only` | 112.0 / 118.9 / 119.1 | 116.6 | 8.57 |
+  | `rfdetr_nano_onnxruntime__full` | 151.1 / 156.2 / 157.0 | 154.8 | 6.46 |
+  | `rfdetr_nano_onnxruntime__network_only` | 96.0 / 96.4 / 104.1 | 98.8 | 10.12 |
+  | `yolo11n_pytorch__full` | 38.5 / 36.7 / 34.8 | 36.7 | 27.27 |
+
+  **Logical cores (`--num-threads 12`):**
+
+  | Candidate | Repeat 1 / 2 / 3 (ms) | Mean (ms) | fps (of mean) |
+  |---|---|---|---|
+  | `rfdetr_nano_pytorch__full` | 140.8 / 138.9 / 136.9 | 138.9 | 7.20 |
+  | `rfdetr_nano_pytorch__network_only` | **321.2** / 136.0 / 131.6 | 196.3 (skewed, see below) | 5.09 (skewed) |
+  | `rfdetr_nano_pytorch_optimized__full` | 127.5 / 125.2 / 124.5 | 125.8 | 7.95 |
+  | `rfdetr_nano_pytorch_optimized__network_only` | 124.2 / 117.1 / 116.4 | 119.3 | 8.39 |
+  | `rfdetr_nano_onnxruntime__full` | 117.0 / 125.0 / 124.6 | 122.2 | 8.18 |
+  | `rfdetr_nano_onnxruntime__network_only` | 104.9 / 98.6 / 98.8 | 100.8 | 9.92 |
+  | `yolo11n_pytorch__full` | 39.5 / 42.2 / 42.0 | 41.2 | 24.26 |
+
+  More logical threads than physical cores did not help much here (SMT on a 6c/12t part rarely helps a single dense-math forward pass) -- most rows land within a few ms either way; `rfdetr_nano_onnxruntime__full` is the one row that visibly improved (154.8ms -> 122.2ms).
+- **The repeat-1 outlier, both runs, same candidate:** `rfdetr_nano_pytorch__network_only`'s first repeat is ~2.2-2.4x its own repeats 2/3 in *both* independent runs (288.5ms vs ~125-129ms at 6 threads; 321.2ms vs ~132-136ms at 12 threads) -- every other candidate's repeats stay within a few ms of each other. Not a harness bug: `benchmark_predict`'s own 20-frame warm-up ran before every repeat, including this one. Read as a one-time cold-start cost specific to this candidate's first invocation in a fresh process -- it is the single largest-tensor path in the whole suite (3900 queries vs 300 for every other RF-DETR row), so a memory-allocator pool growing once for that size, not yet needed by anything before it in the shuffle, is the likely mechanism; unconfirmed, logged as an observation, not a claim. Reported honestly above rather than discarded -- the mean/spread the reader takes from this row should be repeats 2-3 (~125-136ms), not the reported mean, which is skewed by repeat 1.
+- **Position effect (normalized, this session's Part A fix)**: both runs show slot 3 elevated (~1.21, relative to 1.0 = no drift) and slots 1/6 depressed (~0.87-0.90). **This is not independent confirmation of a real position-based drift**: both runs used the same `seed=0`, so the per-round shuffle order is identical between them -- slot 3 of round 1 (global position 3) is mechanically the *same* candidate-repeat combination in both runs, which is exactly the repeat-1 outlier above landing at position 3 both times. Every other slot's normalized value sits within about 0.99-1.03 of 1.0 in both runs, i.e. no drift once that one outlier is set aside. A future run with a varied seed per thread-count pass would decorrelate this if it matters again.
+- **Against `min_pipeline_fps = 8`** (`config/acceptance.yaml`'s not-yet-written judgment call; the operator's framing: an **end-to-end** floor, so the detector alone must sit well below the 125ms frame budget to leave room for hands/state/engine/log): only `yolo11n_pytorch__full` (24-27fps) and `rfdetr_nano_onnxruntime__network_only` (~10fps) clear it with real margin. Everything else sits at or barely past the boundary either way: `rfdetr_nano_pytorch_optimized__network_only` (8.4-8.6fps) and `rfdetr_nano_onnxruntime__full` (6.5fps at 6 threads, 8.2fps at 12) are marginal; `rfdetr_nano_pytorch_optimized__full` (7.95-7.96fps), `rfdetr_nano_pytorch__full` (7.2-7.6fps) and `rfdetr_nano_pytorch__network_only`'s real (non-outlier) repeats (~125-136ms, ~7.35-8.0fps) sit at or under 8fps outright. **On this provisional, COCO-pretrained, `__full`-path basis, none of the RF-DETR rows leave comfortable headroom for the rest of the pipeline; only YOLO11n does.** This is a provisional observation, not a decision -- P1.5 re-measures on the fine-tuned head (different class count, possibly different output-decoding cost) and against `acceptance.yaml`'s actual recall thresholds, and is the only session that chooses a detector or sets `target_fps`.
+- **What was NOT measured**: hands (no `.task` file vendored, per the 2026-09-28 DECISION); the fine-tuned detector (COCO-pretrained only, 91 logit slots vs `config/experiment.json`'s five classes); anything on real Sample Transfer footage (synthetic random frames only). ONNX Runtime's real numbers *are* now measured (unlike the first provisional pass) -- that gap from the earlier RESULTS entry above is closed.
+- **`check.py --status`** on this commit: F1 11/11, F3 22/22, F14 59/59 GREEN (123 passed, 1 skipped overall). Raw JSON for both runs kept locally only, git-ignored (`data/phase2_physical6.json`, `data/phase2_logical12.json`, under `.gitignore`'s `data/` entry) -- not committed, per the standing instruction not to invent a tracked path under `reports/` (P2-owned).
+- Status: PROVISIONAL (informational only; no detector chosen, no `target_fps` set -- both remain P1.5's).
