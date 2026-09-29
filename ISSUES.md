@@ -511,3 +511,86 @@ rig. Suggested next step (not taken here -- no code/doc edits in this session): 
 forward into the zero-shot prompts when `training/prompts.yaml` is written.
 
 - Status: OPEN -- decide at the P1.2 spike (keep the rig as-is vs. swap START/tray props before rows 13-77).
+
+## 2026-09-30 P1 fix - PR #7 review B1 correction
+- Fixes P2's BLOCKING B1 (2026-09-29 review, above): required items 1-4 only, per this session's own scope
+  (deferred items listed as OPEN at the end). Commits on `p1-perception`: `585857a` (eval-mode fix + fake-model
+  test asserting `.training` flips True->False), `8883263` (`FORWARD_PATH_INFO` query-count correction + test),
+  `7e9f326` (docstring corrections). `scripts/check.py` green after each commit.
+- **Confirming check (required item 4), done in this session, no timing, no download** (cached weights only,
+  `C:\Users\HP\.roboflow\models\rf-detr-nano.pth`): a fresh `RFDETRNano()`'s inner module reports
+  `.training == True` before any call; the FIXED `extract_pytorch_raw_outputs`, called first (before any
+  `predict()` on that model object -- the exact ordering B1 described), now returns `pred_boxes.shape[0] == 300`
+  and leaves `.training == False` afterward. This reproduces the bug scenario against the real checkpoint and
+  confirms the fix, not just the fake-model tests.
+- **Supersedes the following** (not edited in place -- `ISSUES.md` is append-only -- superseded by this entry):
+  1. **Part A's item 3 "real bug found wiring the parity check" diagnosis** (2026-09-29 P1 fix entry, item 3):
+     the `(3900, 4)` vs `(300, 4)` mismatch was **not** caused by `forward_export`/`_switch_to_export_mode`
+     being a different forward method. It was training vs. eval mode: a fresh `RFDETRNano()` starts in training
+     mode, `rfdetr/models/lwdetr.py:487` branches query count on `self.training` (`num_queries*group_detr`=3900
+     in training, `num_queries`=300 in eval), and the plain PyTorch path was never eval'd before this fix.
+     `prepare_export_graph` only calls `.eval()` (plus DINOv2 shape-freezing) -- confirmed by reading it --
+     `_switch_to_export_mode` is applied later, inside `ExportBase.__call__`, never by
+     `build_pytorch_export_mode_forward`.
+  2. **Part B's query-count table and "optimized and onnx are the query-count-matched pair, not plain and
+     onnx" statement** (2026-09-29 P1.5-provisional RESULTS -- Part B entry): false. With the fix, all three
+     RF-DETR-Nano forward paths (plain, optimized, onnx) are 300 queries. `pytorch__full` was always directly
+     comparable to `optimized__full` and `onnxruntime__full` -- the `__full` rows were never affected by this
+     bug (`predict()` has always set eval mode itself); only `pytorch__network_only`'s bare
+     `extract_pytorch_raw_outputs` calls were exposed.
+  3. **The repeat-1 outlier explanation** ("allocator pool growing once for that size, unconfirmed" -- same
+     Part B entry): wrong. `pytorch__network_only`'s repeat 1 ran in training mode (3900 queries, real extra
+     compute) because P1's seed=0 shuffle put it at global position 3, one slot before that model object's
+     first `predict()` call in both timed passes; repeats 2-3 ran after `predict()` had already set eval mode.
+     **`pytorch__network_only`'s repeat 1 (288.5 ms at 6 threads, 321.2 ms at 12) is a training-mode number and
+     must not be quoted as this candidate's latency. Repeats 2-3 (~124.8-128.5 ms at 6 threads, ~131.6-136.0 ms
+     at 12) are the valid eval-mode numbers** -- P1's original advice to read repeats 2-3 was the right call,
+     for the wrong reason (harness bug, not cold-start).
+  4. **The earlier `2026-09-29 P1.5-provisional RESULTS - CPU latency: RF-DETR-Nano (COCO-pretrained) vs
+     YOLO11n, two runs each` entry is superseded** by the later Part B entry, per P2's finding F8 -- nothing
+     previously said so.
+- **F2 (where ONNX's full/network_only gap goes):** not a bug. `rfdetr_nano_onnxruntime__full` minus
+  `rfdetr_nano_onnxruntime__network_only` is about 55.9 ms at 6 threads (154.8-98.8) and 21.4 ms at 12
+  (122.2-100.8) -- the ONNX candidate's `PIL.fromarray` + `preprocess_to_nchw` + `decode_detections` cost,
+  thread-count-sensitive, 2-6x `predict()`'s own pre/post. Matters for the eventual pipeline's own pre/post
+  cost, which may use cv2 rather than rfdetr's helper.
+- **F3 (floor wording fix):** Part B's floor paragraph must not present `rfdetr_nano_onnxruntime__network_only`
+  (~10 fps) as clearing `min_pipeline_fps=8` "with real margin" -- `network_only` excludes preprocessing and
+  decode, and the same backend's `__full` is only 6.5/8.2 fps. The paragraph's overall conclusion ("no RF-DETR
+  row has comfortable headroom, only YOLO11n does") stands; only the `network_only` framing must not be quoted
+  as an end-to-end headroom claim.
+- **Deferred, OPEN, to finish before the P1.5 re-benchmark (not done this session -- required items only):**
+  - F4: add `median_ms` per candidate to `build_report` (recomputable from the repeat values already published
+    above; no new measurement needed).
+  - F5: `pytorch__network_only`'s timed region includes `.detach().float().cpu().numpy()`; the ONNX
+    `network_only` path does not do an equivalent conversion. Asymmetric; fix or document the scope.
+  - F6: wrap the `from rfdetr.export.prepare import prepare_export_graph` import in
+    `build_pytorch_export_mode_forward` in the same ImportError-to-skip pattern used elsewhere in this file;
+    state "verified against rfdetr 1.11.0" in the module docstring (`pyproject.toml` pins `>=1.10,<2`).
+  - F7: add tests for `build_pytorch_export_mode_forward`, `run_phase2_parity_check`, `_build_shared_parity_tensor`,
+    `_rfdetr_pytorch_candidates` (none exist).
+  - F9: use a different shuffle seed per thread-count pass so the position effect isn't correlated between the
+    two passes (already disclosed as a caveat in the Part B entry; not yet fixed).
+- **No re-measurement was run or required for B1** -- repeats 2-3 of the existing Part B runs are already valid
+  eval-mode numbers, per P2's own required-item 6. This session ran no timing benchmark and downloaded nothing.
+- Status: RESOLVED (B1 only; required items 1-4). Deferred items above remain OPEN. PR #7 not merged -- awaiting
+  a separate fresh review session per AGENTS.md step 7 (waived only for this fix session by the 2026-09-30 P1
+  DECISION entry below).
+
+## 2026-09-30 P1 DECISION - P2 unavailable: Lead merges P1 PRs and covers P2 work
+- While P2 is unavailable, the Lead (P1) merges P1's own PRs into `develop` without P2's review, gated on
+  (i) `scripts/check.py` green and (ii) a review by a separate fresh agent session using the existing PR-review
+  checklist (`IMPLEMENTATION_PLAN.md` Part 8's "PR checklist, self-certified" plus the reviewer conventions
+  P2's own past entries in this file follow) -- the reviewing session must be distinct from the one that wrote
+  the PR, so a fix is never self-certified by the same context that made it.
+- **Contract changes are excluded from this arrangement.** `contracts.py` and `config/experiment.json` still
+  require an explicit written approval line by the Lead, made in a separate session from the one proposing the
+  change -- same-session self-approval of a contract change is never allowed, waiver or not.
+- **P2 work the Lead takes on runs as its own "I am P2" session**, on `p2-runtime`, touching only P2's owned
+  directories (`state/`, `engine/`, `outputs/`, `runtime/`, `server/`, `harness/`, `scripts/`, `config/`, the
+  lockfile, `reports/` per `IMPLEMENTATION_PLAN.md` Part 10) -- never mixed into a P1 session or a P1 PR.
+- **P2 retro-reviews every PR merged this way once back**, using the same checklist, and may request follow-up
+  changes as a normal post-hoc review.
+- Why: P2 is genuinely unavailable and work must continue; the fresh-session review substitutes for a second
+  person's eyes without pretending the Lead reviewed their own same-session work.
+- Status: OPEN.
