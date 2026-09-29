@@ -1,0 +1,44 @@
+{
+  "experiment_id": "fixture_4step",
+  "version": "1",
+  "classes": [
+    "item_a",
+    "item_b",
+    "item_c",
+    "item_d"
+  ],
+  "steps": [
+    {
+      "step_id": "s1",
+      "display_name": "Step one",
+      "say": "Do step one",
+      "when": [
+        { "type": "present", "label": "item_a" }
+      ]
+    },
+    {
+      "step_id": "s2",
+      "display_name": "Step two",
+      "say": "Do step two",
+      "when": [
+        { "type": "present", "label": "item_b" }
+      ]
+    },
+    {
+      "step_id": "s3",
+      "display_name": "Step three",
+      "say": "Do step three",
+      "when": [
+        { "type": "present", "label": "item_c" }
+      ]
+    },
+    {
+      "step_id": "s4",
+      "display_name": "Step four",
+      "say": "Do step four",
+      "when": [
+        { "type": "present", "label": "item_d" }
+      ]
+    }
+  ]
+}

@@ -93,6 +93,8 @@ Entry format:
 - Decision: Tier 1 uses `pyttsx3` (OS voice, offline, nothing to vendor) in a separate process; an `alert` interrupts by restarting the worker. Piper's maintained `piper1-gpl` is GPL-3.0; Kokoro-82M is Apache-2.0. A pre-rendered phrase cache is Tier 2 (non-essential-features #8).
 - Open: P2.3 measures worker-restart time and interruption reliability on the real machine and records the numbers here.
 - Status: OPEN (decision made, measurement pending)
+- Update 2026-09-28 (P2.3, P2's machine, Windows/SAPI5): built `outputs/tts.py` (`TTSWorker`, `FakeSpeaker`) and `outputs/logger.py` (`JsonlLogger`) per 5.5. Measured with `scripts/measure_tts_restart.py` (real `pyttsx3` backend, not the null stub): **cold start** (construction -> first worker ready, i.e. `multiprocessing` spawn + `pyttsx3.init()` on this machine) is 0.58-0.70s over 3 trials. **Warm restart** (an `alert` `say()` call -> the *new* worker signals ready, while the old one is mid-utterance) is 0.49-0.68s over 5 trials -- `say()` itself does not block on this (it only blocks on `terminate()`+bounded `join(timeout=1.0)`+`Process()`+`start()`, none of which wait for the child's `pyttsx3.init()`); the ready-wait is only used by the measurement script, never by `say()`. **Interruption reliability**: in all 5 trials the pre-empted process was confirmed dead (`is_alive() is False`) within 100ms of the restart call -- `terminate()` on this machine's SAPI5 backend reliably kills a mid-`runAndWait()` process. Numbers are per-machine (spawn + COM init cost varies); re-run the script on the demo laptop before the final gate and append a line here. `t_wall`'s optional-at-construction / placeholder-overwrite convention (the earlier CONTRACT resolution in this file) is implemented exactly as specified in `JsonlLogger.write`.
+- Status: DECIDED and measured on P2's machine; demo-laptop re-measurement still pending.
 
 ## 2026-09-28 setup DECISION - processing rate: target_fps and the 8 fps floor
 - Decision needed: the achievable `RuntimeConfig.target_fps` (default 15) on the demo laptop.
@@ -160,6 +162,12 @@ Entry format:
 - Status: RESOLVED at G0 -- `contracts.py`'s module docstring now names `ISSUES.md` directly.
 
 ---
+
+## 2026-09-28 P2.1 DECISION - StateEvent.confidence default when a step's rules reference no detection
+- Decision needed: IMPLEMENTATION_PLAN.md 5.3.4 defines `confidence` as "the minimum over the hysteresis window of the conf of the best detections the step's rules reference." A step built only from `absent(label)` rules never references a detection at all (by definition, `absent` is true exactly when there is none) -- essential-features.md and the plan do not say what the value should be in that case.
+- Why it matters: `StateEvent.confidence` is a required `Unit` field (contracts.py); `state/tracker.py` (P2.1) must return something, not raise.
+- Decided: `state/tracker.py` defaults `confidence = 1.0` (and therefore `uncertain = False`) when the hysteresis window collects zero referenced confidences. Rationale: nothing observed contradicts the step firing, so there is nothing to be uncertain about. Regression test: `tests/unit/state/test_tracker.py::test_confidence_defaults_to_one_when_no_detection_referenced`. `config/experiment.json`'s Sample Transfer steps are all `inside`/`outside`/`hand_touching`, so this default is not exercised by the current experiment -- flagging for P1's ack in case a future revision adds an `absent`-only step.
+- Status: DECIDED (P2, open for P1 ack)
 
 ## 2026-09-28 G0 sign-off
 - P2 (this machine, Windows): `uv sync --group dev` installs cleanly (271 packages resolved, `uv.lock` committed); `python scripts/check.py --quick` is green (ruff clean, 31 passed / 1 skipped -- the one skip is the RunScript-integrity test, which has nothing to check until runs exist); git hooks installed and verified live (pre-commit and pre-push both fired and passed on the scaffold commit); audio self-test and camera check both passed (see the OS DECISION entry above for details). `contracts.py` authored (it did not exist before this session) and reviewed against every reference to it in `IMPLEMENTATION_PLAN.md` and `essential-features.md`; the four open CONTRACT entries above are applied and resolved; the WhenRule vocabulary is decided. `develop` and `main` created and pushed; the G0 scaffold is on `develop` (commit `d8d4a66`).
@@ -594,3 +602,135 @@ forward into the zero-shot prompts when `training/prompts.yaml` is written.
 - Why: P2 is genuinely unavailable and work must continue; the fresh-session review substitutes for a second
   person's eyes without pretending the Lead reviewed their own same-session work.
 - Status: OPEN.
+## 2026-09-28 P2.2 CONTRACT - RunSummary.run_id has no way to reach SequenceEngine
+- Missing: `contracts.Engine`'s constructor is `SequenceEngine(experiment, config)` and `start(self, t: float) -> None` -- neither carries a `run_id`. `RunSummary.run_id: str` is required, so something has to supply it before a `run_completed` event can be built.
+- Why it matters: without a value, either `RunSummary.run_id` construction fails or the engine has to invent one, and P2.4's runtime (which owns `run_id` generation per Plan 5.6, "arms a fresh idle run with a new run_id") has no documented way to pass it in.
+- Proposed fix (additive, backward-compatible): `start(self, t: float, run_id: str = "") -> None` -- an optional keyword the runtime supplies; omitted, it defaults to `""`. This satisfies the `Engine` Protocol structurally (extra optional params don't break `@runtime_checkable` isinstance checks) without touching `contracts.py`.
+- Status: OPEN (worked around at P2.2 via the additive `start(t, run_id="")` signature in `engine/sequence.py`; P2.4's runtime should pass its generated `run_id` through this parameter once it exists). A human should confirm at the next contract-touching session whether this should be formalized in `contracts.py`'s `Engine` Protocol docstring.
+
+## 2026-09-28 P2.2 DECISION - SequenceEngine.start() now rejects being called mid-run; also, no engine method returns "idle"
+- Found during a deep edge-case review of `engine/sequence.py`: originally `start()` would silently reset all state and jump straight to "running" no matter what `run_state` currently was -- so if a caller invoked `start()` again while a run was in progress, that run's `run_completed` event (and its `RunSummary`) would be lost with no trace, no exception, nothing in the log. Fixed: `start()` now raises `ContractViolation` if `run_state == "running"`, forcing the caller to `finish()` first. Verified this matches Plan 5.6's documented runtime behavior ("`POST /api/run/reset` finishes the current run... and arms a fresh idle run") and does not break the "reusable across runs" design -- `start()` still works fine from `"idle"` or `"completed"`. Regression tests: `test_start_while_running_raises_contract_violation`, `test_engine_is_reusable_after_finish`, `test_engine_is_reusable_after_natural_completion` in `tests/unit/engine/test_sequence.py`.
+- Separately noted, not fixed (out of P2.2's scope, flagging for P2.4): Plan 5.6 says reset "arms a fresh **idle** run", but `contracts.Engine` has no method that ever produces `run_state == "idle"` again once a run has started -- `finish()` only ever produces `"completed"`, and `contracts.RunState` is the same `Literal["idle","running","completed"]` type shared by `Engine.run_state` and `StatusResponse.run_state`/`RunControlResponse.run_state`. Either the runtime's `/api/run/reset` handler needs to treat a freshly-`finish()`ed engine (`run_state == "completed"`, not yet re-`start()`ed) as displaying `"idle"` in its own `StatusResponse` bookkeeping, or `contracts.py` needs an explicit idle-arming affordance. This is Plan 5.4 vs. 5.6 territory boundary (5.4 is P2.2's; 5.6 is P2.4's) -- flagging for whoever builds `runtime/loop.py` and `server/app.py` to resolve explicitly rather than guess.
+- Status: OPEN (advisory for P2.4; the `start()` re-entrancy fix above is DONE).
+- Update 2026-09-28 (P2.4): resolved at the runtime layer -- see the 2026-09-28 P2.4 DECISION entry below ("resolves the P2.2 'Engine never reports idle again' gap").
+
+---
+
+## 2026-09-28 P2.4 CONTRACT - ReplayResult is referenced but not defined in contracts.py
+- Missing: IMPLEMENTATION_PLAN.md 5.9 ("`python scripts/replay.py --from-cache | --video | --script` ... replay a run through tracker + engine -> `ReplayResult`") and Part 10's P2.4 packet both name `ReplayResult` as the return type of `harness/replay.py`'s replay functions, but `contracts.py` has no such type.
+- Why it matters: `harness/replay.py` needs a concrete return shape now, and P2.6 (tuning) and P2.7 (test-split reporting) will also consume it -- they may need more than this session can anticipate (e.g. a pass/fail verdict against `RunScript.expected_deviations`).
+- Proposed fix / what was tried: worked against a local `TEMP_1_ReplayResult` (a plain pydantic `BaseModel`, not in `contracts.py`) in `harness/replay.py` -- `run_id`, `frames_processed`, `engine_events: list[EngineEvent]`, `summary: RunSummary | None`. Deliberately minimal; callers can derive observed deviations / POS / alert counts from `engine_events`/`summary` without needing more fields yet. A human should confirm the final shape in a `contract/<slug>` PR once P2.6/P2.7 know what they actually need from it.
+- Status: OPEN
+
+## 2026-09-28 P2.4 DECISION - live runtime run_id format
+- Decision needed: `RunSummary.run_id`/`LogEntry.run_id` need a value for runtime-generated runs (`POST /api/run/start` / `/api/run/reset`, P2.5), distinct from the crew's recorded `<split>-<n>` ids (`RunScript`, `runs/run_plan.csv`).
+- Why it matters: `runtime/loop.py`'s `Router` owns run_id generation per the P2.2 CONTRACT entry above ("arms a fresh idle run with a new run_id"), and the per-run log/video filenames are named by it (F9, F11).
+- Decided: `live-<UTC timestamp %Y%m%dT%H%M%SZ>-<6 hex chars>` (`runtime.loop.default_run_id`), injectable via `Router(..., run_id_factory=...)` for tests/replay. The random suffix keeps two resets within the same second from colliding.
+- Status: DECIDED (P2.4); open for ack before P2.5 wires it into the server, in case a different convention is preferred.
+
+## 2026-09-28 P2.5 DECISION - StatusResponse.expected_step_id/next_step_id semantics when polled (not event-driven)
+- Context: contracts.py's EngineEvent docstring pins expected_step_id/next_step_id as "the first pending step before/after this event" -- a meaning tied to a specific transition. StatusResponse carries fields with the same names but GET /api/status is polled on a timer (essential-features.md #12), with no in-flight event to read them from.
+- Decided (server/app.py, `_step_guidance`): derived straight from Engine.snapshot()'s canonical-order step list (no contracts.py change needed). expected_step_id = the first still-pending step (what the operator should be doing now); next_step_id = the pending step after that; next_step_say = that next step's `say` text, so the dashboard's single "current/next step" element (essential-features.md #12 point 1) can render both from one poll. Regression test: tests/unit/server/test_app.py::test_status_matches_contract_and_reflects_idle_engine.
+- Why it matters: a different but equally plausible reading existed (e.g. expected_step_id = the step most recently confirmed). Flagging so P1 can ack the chosen reading before the dashboard is relied on during rehearsal.
+- Status: DECIDED (P2), open for P1 ack.
+
+## 2026-09-28 P2.5 DECISION - the Flask URL map is exactly API_ROUTES, so server/static/ files are inlined, not served by a separate route
+- Context: API_ROUTES's docstring says "the Flask URL map must equal it" (exactly, per essential-features.md #10's contract line), but essential-features.md #12's implementation section separately lists server/static/index.html, app.js, style.css, vendor/ as files a browser would normally fetch via their own routes -- which Flask's default static-file handling would add as an extra `/static/<path:filename>` rule outside API_ROUTES.
+- Decided: server/app.py disables Flask's automatic static route (`static_folder=None`) and instead reads style.css/app.js once at app-creation time and inlines them into the single `GET /` response (server/app.py's `_render_index`); the three files still exist separately on disk under server/static/ for editing. This satisfies the "exactly" wording literally rather than by an implicit carve-out for a framework-internal route. Regression test: tests/unit/server/test_app.py::test_url_map_equals_api_routes_exactly.
+- Why it matters: the alternative reading (url_map equality excludes Flask's own built-in `static` endpoint) is also defensible and more conventional; flagging so P1 can ack the chosen reading.
+- Status: DECIDED (P2), open for P1 ack.
+
+## 2026-09-28 P2.4 DECISION - resolves the P2.2 "Engine never reports idle again" gap
+- Context: the 2026-09-28 P2.2 DECISION entry above flagged that `contracts.Engine` has no method that ever reproduces `run_state == "idle"` after a run has started (`finish()`/natural completion both leave it at `"completed"`), and asked whoever builds `runtime/loop.py` to resolve it explicitly.
+- Resolved: `runtime/loop.py`'s `Router` tracks its own `_idle_armed` flag (set at construction and by `reset()`, cleared by `start()`); its `run_state` property reports `"idle"` whenever that flag is set, regardless of what `Engine.run_state` itself says. `contracts.py` is untouched -- the gap is closed at the runtime layer, as the P2.2 entry's second option proposed. Regression tests: `tests/unit/runtime/test_router.py::test_router_reports_idle_before_start_and_after_reset`, `::test_router_reset_while_idle_is_a_noop_for_the_engine`.
+- Status: RESOLVED (P2.4).
+
+---
+
+## 2026-09-30 P2 (covered by the Lead) - p2-runtime rebased onto develop, plus one cross-role P1 fix
+
+- **Who:** the Lead, running this session as P2 per the 2026-09-30 "P1 DECISION - P2 unavailable" entry above.
+  P2-role only for everything except the one fix below: touched only `p2-runtime`, its own owned directories,
+  and this file. No edit to `training/`, `contracts.py` or `config/experiment.json`.
+- **Cross-role authorization (the one exception):** this session's pre-commit and pre-push hooks both run the
+  entire `scripts/check.py`, unscoped to what is being committed -- so the `perception/`-side bug found below
+  blocked *every* commit on this branch, including pure P2 work, not just anything touching `perception/`.
+  P1 (the owner of `perception/`), in chat, authorized this session -- for this one fix only -- to edit
+  `perception/record.py` and `tests/unit/perception/test_record.py` on `p2-runtime`. Everything else in this
+  session stayed inside P2's owned directories. Commits `c961206` (the fix) and `bde32ec` (the unrelated P2
+  ruff fix, below) are separate and clearly labelled.
+- **Safety backup, before anything else:** `origin/p2-runtime` was confirmed still at `f0e294d` (its P2.5
+  round-2 head), then pushed unchanged to a new branch `origin/p2-runtime-pre-rebase` (old head `f0e294d`) so
+  the pre-rebase state is recoverable. Nothing on `origin/p2-runtime` was overwritten by that push.
+- **Rebase:** `git rebase origin/develop` onto `ea15a3e` (PR #7 merged: P1 Phase 2 Part A/B + the B1 correction
+  + the P2-unavailable DECISION). **Zero conflicts** -- all 14 P2 commits (P2.1 StateTracker through P2.5
+  round-2) replayed cleanly; `p2-runtime` is now 46 commits ahead of the old merge base. `ISSUES.md`'s
+  append-only/merge=union convention was never exercised because there was nothing to merge.
+- **F7 correction to this session's own brief:** the task brief for this session described F7
+  (`test_degrades_quietly_when_engine_init_fails`, `tests/unit/outputs/test_tts.py`) as red with
+  `ModuleNotFoundError: No module named 'tests.unit'` inside a spawned child process on Windows. That does
+  **not** reproduce on this rebased branch: the test passed 5/5 in isolation and in the full suite, both before
+  and after the rebase. Checked why: `_raising_engine_factory` (the picklable-under-`spawn` stand-in for a
+  broken audio engine that this test passes to `TTSWorker`) has been a module-level function, with a docstring
+  explicitly calling out "Module-level (picklable under spawn) ...", since its very first commit
+  (`f4fade0`/`3886716`, P2.3: Outputs) -- `git log -p` on `tests/unit/outputs/test_tts.py` shows no version of
+  this file ever defined it as a local/nested function. There is nothing to fix here; no code was changed for
+  F7. The operator's hypothesis for the earlier red -- a one-off spawn artefact from running in a detached
+  worktree -- is plausible but **unverified**; this session found no evidence either way, only that it is not
+  the current, reproducible state. `check.py --status`: **F7 22/22 GREEN.**
+- **Real finding instead -- F14 was RED, one failure, root-caused and fixed under the cross-role
+  authorization above (commit `c961206`):** `tests/unit/perception/test_record.py::test_validate_run_flags_unknown_step_id`
+  failed with an unhandled `contracts.ContractViolation: unknown step_id 'not_a_real_step'` raised from
+  `engine/sequence.py:72` (P2-owned, working exactly per contract: it rejects an event for a step id the
+  experiment doesn't define). The call path: `perception/record.py`'s `validate_run` (P1-owned) already
+  detected unknown `performed_steps` at line 397-399 and correctly appended
+  `"performed_steps references unknown step ids: [...]"` to `result.issues` -- but then unconditionally called
+  `_expected_deviations_stale(script, experiment_path)` at line 439 regardless, which called
+  `engine.reference.derive_expected_deviations` (P2-owned) with the same invalid `performed_steps`, which fed
+  them to a real `SequenceEngine`, which correctly raised rather than silently accepting an undefined step.
+  The exception was never caught, so `validate_run` crashed before it could return the `ValidationResult` it
+  had already started building. **This was always latent, not introduced by this rebase or by any P2 code in
+  it**: `_expected_deviations_stale`'s own comment says `# engine/reference.py hasn't landed yet (P2.2)` -- on
+  `develop` alone (without P2's branch), importing `engine.reference` raises `ImportError`, which
+  `_expected_deviations_stale` caught and turned into a silent no-op (`return None`), so the crash was
+  structurally unreachable until a branch carrying both P1's test and P2's `engine/reference.py` existed at
+  once. This rebase was the first time that happened. **Fix (commit `c961206`, cross-role, P1's files):** in
+  `validate_run`, skip the call to `_expected_deviations_stale` entirely when `unknown_steps` is already
+  non-empty -- the staleness check is meaningless for a script with invalid step ids, and the issue is already
+  recorded. `engine/sequence.py`'s hard rejection of unknown step ids is correct behavior and was not touched
+  or loosened. Test-first: added
+  `test_validate_run_flags_stale_expected_deviations_for_valid_step_ids` (real, valid step ids that skip
+  `red_in_tray`, stale `expected_deviations=[]`) first, confirmed it already passed against the *unfixed* code
+  (proving the staleness check itself works and nothing else needed to change), confirmed
+  `test_validate_run_flags_unknown_step_id` was red, then applied the one-line guard. Both tests, and the full
+  `tests/unit/perception/test_record.py` (19 tests), pass after the fix.
+  `check.py --status`: **F14 61/61 GREEN** (was 60 total; +1 for the new coverage).
+- **Walking-skeleton smoke test (no camera, no audio):** `python -m harness.replay --script <RunScript JSON>
+  --experiment fixtures/experiment_4step.json`, performed_steps `["s1", "s3", "s4"]` (step `s2` omitted) against
+  the `fixture_4step` experiment. Ran end to end through `SequenceEngine` + `Router` + `JsonlLogger` (this
+  mode bypasses `StateTracker` by design, per `harness/replay.py`'s own docstring, to exercise the router/log
+  path without needing `PerceptionFrame` data): 3 frames processed, the omitted `s2` produced exactly one
+  `deviation_detected` event ("Step skipped: Step two") and one matching JSONL line, run completed with
+  `pos=0.75`, `skipped_step_ids=["s2"]` -- the GOLD-1 pattern (a skipped step -> exactly one alert, one log
+  line), confirmed working through the loop. `runs_out/` (git-ignored) and the temporary script JSON were
+  removed after; `git status` is clean.
+- **Note for P2:** re-fetch -- your local `p2-runtime` is stale. Reset it to `origin/p2-runtime` after reading
+  this entry (`git fetch origin && git reset --hard origin/p2-runtime`, after saving any local-only work you
+  don't want to lose). Nothing you built was changed in content, only rebased onto `develop`'s new head.
+- **Retro-review still owed:** per the P2-unavailable DECISION above, P2 retro-reviews this rebase (and every
+  PR the Lead merged while P2 was out) once back, using the normal PR-review checklist -- this now includes
+  retro-reviewing the cross-role `perception/record.py` fix too, since P2 didn't write or review it either.
+- **Unrelated pre-existing lint fix, in P2's own directories (commit `bde32ec`):** `check.py --quick` runs
+  `ruff check .` before pytest, and its output was truncated out of view in this session's own first two checks
+  (only the pytest tail was inspected) -- `ruff` was actually failing the whole time on two pre-existing `I001`
+  (unsorted import block) findings, in `harness/replay.py` and `scripts/dev.py` (both P2-owned). Confirmed via
+  `origin/p2-runtime-pre-rebase` that both predate this session and this rebase entirely -- not introduced by
+  anything here. Fixed with `ruff check --fix` (pure import reordering, `perception.pipeline` before
+  `perception.camera`; no behavior change, both still imported lazily as before).
+- **Why this took four commits, not one:** the pre-commit/pre-push hooks run the whole suite unscoped, so
+  nothing could be committed at all until the `perception/` blocker was cleared -- see the cross-role
+  authorization above. Kept separate on purpose: `c961206` (P1 fix, cross-role), `bde32ec` (P2 ruff fix), this
+  entry (P2, `ISSUES.md` only), on top of the plain rebase.
+- Status: RESOLVED for this branch. `python scripts/check.py`: full suite green. `python scripts/check.py
+  --status`: **F1-F14 all GREEN** (F2 has no tests, as before). Nothing in this entry is merged into
+  `develop`; the PR from `p2-runtime` into `develop` is opened by the operator, by hand.
