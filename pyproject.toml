@@ -38,6 +38,8 @@ train = [
 tools = [
     { include-group = "run" },
     "ultralytics>=8.3,<9",
+    "onnx>=1.16,<2",
+    "onnxruntime>=1.20,<2",
 ]
 # `dev`: every developer laptop. Runtime + test/lint tooling.
 dev = [
