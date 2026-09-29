@@ -417,14 +417,18 @@ def run_parity_check(
 ) -> ParityResult:
     """The end-to-end parity runner (this session's own instruction, A2):
     feeds the SAME preprocessed input through both backends --
-    ``pytorch_raw_fn`` is ``build_pytorch_export_mode_forward(model)``, **not**
-    ``extract_pytorch_raw_outputs`` (verified to be a different computation
-    on this checkpoint -- see that function's docstring), and ``onnx_raw_fn``
-    a small ONNX-session-runner built the same way the real
-    ``__network_only`` candidate is -- and raises ``ParityError`` if they
-    disagree beyond tolerance. Phase 2 calls this for real before any timed
-    run; this function itself is exercised here only against fakes
-    (pass/fail), per this session's own instruction."""
+    ``pytorch_raw_fn`` is ``build_pytorch_export_mode_forward(model)``,
+    prepared the way rfdetr's own export pipeline prepares a model (see
+    that function's docstring for the B1 correction: both it and
+    ``extract_pytorch_raw_outputs`` are now eval-mode and compute the
+    same thing on the plain path; ``build_pytorch_export_mode_forward``
+    remains the reference here because it is built the way the real
+    exporter builds it, not because of a shape mismatch), and
+    ``onnx_raw_fn`` a small ONNX-session-runner built the same way the
+    real ``__network_only`` candidate is -- and raises ``ParityError`` if
+    they disagree beyond tolerance. Phase 2 calls this for real before
+    any timed run; this function itself is exercised here only against
+    fakes (pass/fail), per this session's own instruction."""
     pytorch_boxes, pytorch_logits = pytorch_raw_fn(preprocessed_tensor_torch)
     onnx_boxes, onnx_logits = onnx_raw_fn(preprocessed_tensor_numpy)
     result = check_raw_output_parity(
@@ -888,28 +892,35 @@ def _build_shared_parity_tensor(
 
 
 def build_pytorch_export_mode_forward(model: Any) -> Callable[[Any], tuple[np.ndarray, np.ndarray]]:
-    """Builds a callable matching what the ONNX graph actually computes --
-    **not** the same computation as ``extract_pytorch_raw_outputs``.
-    Verified empirically, not assumed: on this checkpoint, ``model.model.model``'s
-    plain ``forward()`` (what ``extract_pytorch_raw_outputs`` calls, and what
-    ``predict()``'s own eager path calls internally) returns 3900 query/class
-    pairs (``pred_logits``/``pred_boxes`` shape ``(1, 3900, *)``); the actual
-    exported ONNX graph's ``dets``/``labels`` outputs are ``(1, 300, *)``.
-    The difference is ``forward_export`` (`rfdetr/models/lwdetr.py`), a
-    second forward method the export pipeline switches the model into via
-    the private ``rfdetr.export._backend._switch_to_export_mode`` before
-    tracing -- confirmed by reading ``rfdetr/export/prepare.py``'s
-    ``prepare_export_graph`` and by direct experiment (calling
-    ``_switch_to_export_mode`` alone and invoking the model raises inside
-    ``transformer.py``: the DINOv2 backbone's position embeddings must
-    first be frozen to the export shape, which only ``prepare_export_graph``
-    does correctly). So this function **reuses rfdetr's own
-    ``prepare_export_graph``** (AGENTS.md rule 1: reuse libraries, verified
-    to give exactly the ``(1, 300, *)`` shape the real ONNX file reports)
-    rather than hand-driving the private switch. Operates on a **deep copy**
-    of ``model.model.model`` -- the switch is one-way and would silently
-    corrupt any later ``predict()`` call on the original if applied there
-    directly (ISSUES.md 2026-09-29)."""
+    """Builds a callable for the ONNX *parity* comparison: the model in
+    eval mode, prepared the same way rfdetr's own export pipeline prepares
+    it, before the exporter-specific tracing step.
+
+    **B1 correction** (ISSUES.md 2026-09-29 P2 review, BLOCKING; 2026-09-30
+    correction entry): this docstring previously claimed the ``(1, 3900, *)``
+    vs ``(1, 300, *)`` shape difference from ``extract_pytorch_raw_outputs``
+    was caused by a *different forward method*
+    (``forward_export``, switched in via the private
+    ``rfdetr.export._backend._switch_to_export_mode``). That was wrong.
+    Reading ``rfdetr/export/prepare.py``'s ``prepare_export_graph`` shows
+    it only freezes DINOv2's position embeddings to the export shape and
+    calls ``.eval()`` -- it never calls ``_switch_to_export_mode``; that
+    switch happens later, inside ``rfdetr/export/base.py``'s
+    ``ExportBase.__call__`` (its own comment: *"the model arrives from
+    prepare_export_graph in its training forward"*), which this function
+    never invokes. So the ``(1, 300, *)`` shape this function has always
+    produced comes from ``.eval()`` alone -- the same
+    ``self.training`` branch in ``rfdetr/models/lwdetr.py`` that
+    ``extract_pytorch_raw_outputs`` now also guards before its own raw
+    forward (see that function's docstring). With both functions eval'd,
+    they compute the *same* thing on the plain (non-optimized) path; this
+    one remains the right reference for the ONNX parity check because it
+    is built the way rfdetr's own export pipeline prepares a model, on an
+    explicit **deep copy** of ``model.model.model`` -- ``prepare_export_graph``
+    mutates shape state that would silently corrupt a later ``predict()``
+    call on the original if applied there directly (ISSUES.md 2026-09-29).
+    Reuses rfdetr's own ``prepare_export_graph`` throughout (AGENTS.md
+    rule 1: reuse libraries, don't reimplement)."""
     import copy
 
     from rfdetr.export.prepare import prepare_export_graph
