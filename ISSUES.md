@@ -472,3 +472,42 @@ Entry format:
 - **What was NOT measured**: hands (no `.task` file vendored, per the 2026-09-28 DECISION); the fine-tuned detector (COCO-pretrained only, 91 logit slots vs `config/experiment.json`'s five classes); anything on real Sample Transfer footage (synthetic random frames only). ONNX Runtime's real numbers *are* now measured (unlike the first provisional pass) -- that gap from the earlier RESULTS entry above is closed.
 - **`check.py --status`** on this commit: F1 11/11, F3 22/22, F14 59/59 GREEN (123 passed, 1 skipped overall). Raw JSON for both runs kept locally only, git-ignored (`data/phase2_physical6.json`, `data/phase2_logical12.json`, under `.gitignore`'s `data/` entry) -- not committed, per the standing instruction not to invent a tracked path under `reports/` (P2-owned).
 - Status: PROVISIONAL (informational only; no detector chosen, no `target_fps` set -- both remain P1.5's).
+
+## 2026-09-30 P1 DECISION - crew footage intake: real objects diverge from DATA_COLLECTION.md's prop guidance (decide at the P1.2 spike)
+
+**Context:** P1 footage-intake session (Good=22, Bad=24 videos, 848x480 H.264 30fps, sent via WhatsApp). Visually
+inspected mid-frames of x001.mp4 (good) and x023.mp4 (bad) against `config/experiment.json` and
+`DATA_COLLECTION.md` section 1's object table. Not a code or contract problem -- `config/experiment.json`
+itself matches the crew's step ids/order/rules exactly (verified: `red_out, red_in_tray, yellow_out,
+yellow_in_tray, start_pressed, red_stowed, yellow_stowed`, canonical order 1-7). The mismatch is between the
+*written prop guidance* and what the crew actually built, which matters for two future steps that don't exist
+yet: (a) whoever writes the zero-shot auto-labeling text prompts (DATA_COLLECTION.md section 9: "a zero-shot
+detector draws boxes from text prompts ('red box', 'green button')" -- no `training/prompts.yaml` exists yet,
+so nothing is broken today, but a prompt written from the doc as-is would be wrong), and (b) any crew member
+recording more sessions from the doc alone.
+
+1. **`start_button` is not the documented green coaster.** It is a small white lined index card with "START"
+   handwritten in blue ballpoint, taped down. Confirmed in both sampled frames. Fine for a trained detector
+   (class-based, not color-based) but a "green button" text prompt for auto-labeling would fail outright, and
+   DATA_COLLECTION.md section 1's table is now wrong for any crew member using it to set up a fresh rig.
+2. **The `tray` is a grey hardcover book/notebook**, not a "flat plastic lunch-box lid, baking tray or
+   placemat" in "blue, black or white." It sits where the doc's layout diagram puts the tray and both
+   containers rest on top of it in the "good" frame exactly as the procedure describes, so it functions
+   correctly as a flat surface -- but its color (grey) is not one of the three listed, and a grey object
+   next to a grey/dark table risks lower contrast than the doc's color rule was written to guarantee.
+3. **The yellow container's actual hue leans lime/olive-green, not saturated yellow**, and both lids carry
+   faint white embossed/printed lettering. DATA_COLLECTION.md's `red_box`/`yellow_box` row calls for
+   "saturated," "matte," and (for red) "no white lettering across the top" specifically to keep red vs.
+   yellow separable and clean for the detector; the yellow lid's green-shifted hue is the closer of the two
+   containers to `outer_box`/background confusion territory and the closest to accidentally reading as a
+   third, undocumented color.
+
+**Not blocking Phase 1/2 of this footage-intake session** (labels and copies proceed from the crew's own
+"good"/"bad" declaration, not from prop color). Flagging because it affects: (a) whoever builds the zero-shot
+auto-label prompts next, and (b) DATA_COLLECTION.md section 1's table, which is now stale against the actual
+rig. Suggested next step (not taken here -- no code/doc edits in this session): P1 or Data crew either
+(i) swap the START object for something closer to the doc's green coaster before recording rows 13-77, or
+(ii) update DATA_COLLECTION.md section 1 to match the rig that was actually built and carry the color values
+forward into the zero-shot prompts when `training/prompts.yaml` is written.
+
+- Status: OPEN -- decide at the P1.2 spike (keep the rig as-is vs. swap START/tray props before rows 13-77).
