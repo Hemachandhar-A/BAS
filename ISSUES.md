@@ -749,3 +749,38 @@ forward into the zero-shot prompts when `training/prompts.yaml` is written.
   dataset under its own slug -- suggested `hemachandhara/sih26174-frames` -- and must not touch, modify or
   delete any of the account's other listed datasets.
 - Status: DECIDED. Read-only auth check done; no dataset created yet.
+
+## 2026-09-30 P1 DECISION - runs/provenance.csv added; adopting the 46 intake clips
+
+- **Context:** the 46 clips in `data/intake/` (labels.csv + map.csv + working/<id>.mp4, all git-ignored; see
+  the 2026-09-30 "crew footage intake" DECISION above) needed turning into `runs/<id>/{video.mp4,script.json}`
+  the way Stage 0 (`perception/record.py`) would have produced directly, so they feed F14 stages 2+ normally.
+  Built `perception/adopt.py` (test-first: `tests/unit/perception/test_adopt.py`, a tiny generated clip + a
+  fake labels.csv/map.csv, per essential-features.md's F14 done-when).
+- **`runs/provenance.csv` (new file, tracked):** `contracts.RunScript` has no field for the crew's original
+  filename, sha256, crew label, label source or reviewer notes -- those don't belong in the derived,
+  contract-typed `script.json`. `IMPLEMENTATION_PLAN.md` Part 4 lists `runs/` as "Data crew + P1", and
+  provenance-of-a-recording is exactly that kind of joint metadata, not a P2-owned shape, so it goes in a
+  sibling CSV rather than stretching the contract. Columns: `run_id, original_name, sha256, crew_label,
+  label_source, checked_by, notes`. No `contracts.py` change proposed -- this is intake bookkeeping, not a
+  P1/P2 boundary shape.
+- **`--min-duration-s` added to `perception/record.py`'s Stage 1 validator** (default unchanged at 20.0s,
+  tested by `test_validate_run_min_duration_s_default_is_unchanged`): the 46 intake clips are real crew
+  footage from before this project's 20-150s recording convention existed, and the shortest (`x023`, an idle
+  run) is 4.0s. `--validate runs/ --min-duration-s 3` is the value used for this one adoption batch, chosen
+  to sit below the shortest real clip (4.0s) without being so low it would mask a genuinely truncated file.
+  This does not change the recorder's own default band for anything recorded going forward with
+  `--plan runs/run_plan.csv` (rows 13-77, still 20-150s).
+- **Step order verified, not assumed:** `perception.adopt.verify_step_order` asserts
+  `config/experiment.json`'s live `step_ids` equal `[red_out, red_in_tray, yellow_out, yellow_in_tray,
+  start_pressed, red_stowed, yellow_stowed]` (the order labels.csv's 1-7 codes were written against) before
+  any file is touched, and aborts the whole batch otherwise.
+- **Split:** seeded (seed 0), stratified by `script_type`, provisional -- target counts train/val/test:
+  correct 14/4/4, skip 5/2/2, swap 5/2/2, repeat 1/1/1, idle 1/1/1 (26/10/10 of the 46). A `--split-file`
+  override exists for a human-adjusted split later without touching the tool.
+- **`expected_deviations` is derived, never hand-typed:** `perception/adopt.py` calls
+  `engine.reference.derive_expected_deviations` directly (R3, the same sanctioned P1->P2 call
+  `perception/record.py`'s Stage 1 already makes) -- no reimplementation.
+- Status: DECIDED. `runs/` ownership read as "Data crew + P1" per Part 4; provenance.csv and the
+  `--min-duration-s` flag are additive, not a contract or `IMPLEMENTATION_PLAN.md` change. Open for P2's ack
+  on the `runs/provenance.csv` file existing at all, since `runs/` is jointly owned.
