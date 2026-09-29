@@ -1,0 +1,30 @@
+{
+  "run_id": "x045",
+  "experiment_id": "sample_transfer",
+  "script_type": "skip",
+  "split": "test",
+  "fps": 29.955,
+  "camera_setup_id": "unknown",
+  "operator": "unknown",
+  "performed_steps": [
+    "yellow_out",
+    "yellow_in_tray",
+    "start_pressed",
+    "yellow_stowed"
+  ],
+  "expected_deviations": [
+    {
+      "deviation_type": "omission",
+      "step_ids": [
+        "red_out",
+        "red_in_tray"
+      ]
+    },
+    {
+      "deviation_type": "omission",
+      "step_ids": [
+        "red_stowed"
+      ]
+    }
+  ]
+}

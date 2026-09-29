@@ -1,0 +1,11 @@
+{
+  "run_id": "x036",
+  "experiment_id": "sample_transfer",
+  "script_type": "idle",
+  "split": "val",
+  "fps": 29.999,
+  "camera_setup_id": "unknown",
+  "operator": "unknown",
+  "performed_steps": [],
+  "expected_deviations": []
+}

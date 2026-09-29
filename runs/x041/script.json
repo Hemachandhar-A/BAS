@@ -1,0 +1,39 @@
+{
+  "run_id": "x041",
+  "experiment_id": "sample_transfer",
+  "script_type": "swap",
+  "split": "test",
+  "fps": 29.973,
+  "camera_setup_id": "unknown",
+  "operator": "unknown",
+  "performed_steps": [
+    "red_out",
+    "red_in_tray",
+    "red_stowed",
+    "yellow_out",
+    "yellow_in_tray",
+    "yellow_stowed"
+  ],
+  "expected_deviations": [
+    {
+      "deviation_type": "omission",
+      "step_ids": [
+        "yellow_out",
+        "yellow_in_tray",
+        "start_pressed"
+      ]
+    },
+    {
+      "deviation_type": "out_of_order",
+      "step_ids": [
+        "yellow_out"
+      ]
+    },
+    {
+      "deviation_type": "out_of_order",
+      "step_ids": [
+        "yellow_in_tray"
+      ]
+    }
+  ]
+}

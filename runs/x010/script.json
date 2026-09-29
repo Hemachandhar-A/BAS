@@ -1,0 +1,19 @@
+{
+  "run_id": "x010",
+  "experiment_id": "sample_transfer",
+  "script_type": "correct",
+  "split": "train",
+  "fps": 29.975,
+  "camera_setup_id": "unknown",
+  "operator": "unknown",
+  "performed_steps": [
+    "red_out",
+    "red_in_tray",
+    "yellow_out",
+    "yellow_in_tray",
+    "start_pressed",
+    "red_stowed",
+    "yellow_stowed"
+  ],
+  "expected_deviations": []
+}
