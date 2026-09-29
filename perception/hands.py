@@ -46,8 +46,13 @@ def _to_pixels(landmarks, width: int, height: int) -> list[tuple[float, float]]:
 
 def _to_mp_image(image: np.ndarray) -> mp.Image:
     # BGR (OpenCV native) everywhere; convert to RGB only at this model
-    # boundary (AGENTS.md rule 16).
-    return mp.Image(image_format=mp.ImageFormat.SRGB, data=image[..., ::-1])
+    # boundary (AGENTS.md rule 16). `image[..., ::-1]` alone is a
+    # negative-stride, non-contiguous view -- MediaPipe's native Image
+    # reads it as raw contiguous bytes, so it silently sees scrambled
+    # channels and out-of-bounds memory (ISSUES.md, 2026-09-29 P2 review).
+    # np.ascontiguousarray copies it into a real C-contiguous RGB buffer
+    # without mutating the caller's (BGR) array.
+    return mp.Image(image_format=mp.ImageFormat.SRGB, data=np.ascontiguousarray(image[..., ::-1]))
 
 
 class HandTracker:
@@ -84,7 +89,11 @@ class HandTracker:
     @property
     def weights_sha256(self) -> str:
         """For ``compose_model_stamp`` (contracts.py), assembled by
-        ``perception/pipeline.py`` at P1.6."""
+        ``perception/pipeline.py`` at P1.6. Re-reads and hashes the whole
+        file on every access -- fine for a one-off stamp, but P1.6 should
+        read it once at construction / model_stamp composition time, not
+        per frame (ISSUES.md, 2026-09-29 P2 review; not cached here since
+        that's a larger change than this property needs today)."""
         return sha256_of_file(self._model_path)
 
     def process(self, image: np.ndarray, t: float) -> list[Hand]:
@@ -150,6 +159,8 @@ class PoseTracker:
 
     @property
     def weights_sha256(self) -> str:
+        """See ``HandTracker.weights_sha256``: re-hashes on every access,
+        documented rather than cached (ISSUES.md, 2026-09-29 P2 review)."""
         return sha256_of_file(self._model_path)
 
     def process(self, image: np.ndarray, t: float) -> Pose | None:

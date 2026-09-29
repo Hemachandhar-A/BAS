@@ -49,10 +49,12 @@ class _FakeLandmarker:
         self._results = list(results) if results is not None else []
         self._default_factory = default_factory or (lambda: _FakeHandResult([], []))
         self.timestamps: list[int] = []
+        self.received_images: list = []
         self.closed = False
 
     def detect_for_video(self, image, timestamp_ms: int):
         self.timestamps.append(timestamp_ms)
+        self.received_images.append(image)
         if self._results:
             return self._results.pop(0)
         return self._default_factory()
@@ -87,6 +89,48 @@ def _pose_tracker_with_fake(monkeypatch, created: list[_FakeLandmarker]) -> hand
         hands.mp_vision.PoseLandmarker, "create_from_options", fake_create_from_options
     )
     return hands.PoseTracker(model_path="fake_pose.task")
+
+
+# ---------------------------------------------------------------------------
+# _to_mp_image: the BGR->RGB model boundary (rule 16). Builds a real
+# mp.Image -- no model file needed, per ISSUES.md 2026-09-29 P2 review.
+# ---------------------------------------------------------------------------
+
+
+def test_to_mp_image_produces_contiguous_rgb_with_correct_channel_order() -> None:
+    image = np.zeros((4, 5, 3), dtype=np.uint8)
+    image[0, 0] = (10, 20, 30)  # BGR
+    image[1, 2] = (100, 150, 200)
+    image[3, 4] = (5, 6, 7)
+
+    mp_image = hands._to_mp_image(image)
+    view = mp_image.numpy_view()
+
+    assert view.flags["C_CONTIGUOUS"]
+    assert tuple(view[0, 0]) == (30, 20, 10)
+    assert tuple(view[1, 2]) == (200, 150, 100)
+    assert tuple(view[3, 4]) == (7, 6, 5)
+
+
+def test_to_mp_image_handles_a_non_contiguous_input_view() -> None:
+    base = np.zeros((8, 10, 3), dtype=np.uint8)
+    base[2, 4] = (1, 2, 3)
+    sliced = base[::2, ::2]  # e.g. a decimated/cropped frame view
+    assert not sliced.flags["C_CONTIGUOUS"]
+
+    view = hands._to_mp_image(sliced).numpy_view()
+
+    assert tuple(view[1, 2]) == (3, 2, 1)  # base[2,4] -> sliced[1,2]
+
+
+def test_to_mp_image_does_not_mutate_the_caller_array() -> None:
+    image = np.zeros((4, 5, 3), dtype=np.uint8)
+    image[0, 0] = (10, 20, 30)
+    original = image.copy()
+
+    hands._to_mp_image(image)
+
+    assert np.array_equal(image, original)
 
 
 # ---------------------------------------------------------------------------
@@ -183,6 +227,53 @@ def test_close_closes_the_underlying_landmarker(monkeypatch) -> None:
     assert created[0].closed is True
 
 
+def test_hand_tracker_passes_a_correctly_converted_image_to_the_landmarker(monkeypatch) -> None:
+    created: list[_FakeLandmarker] = []
+    tracker = _hand_tracker_with_fake(monkeypatch, created)
+    image = np.zeros((6, 8, 3), dtype=np.uint8)
+    image[2, 3] = (10, 20, 30)  # BGR
+
+    tracker.process(image, t=0.0)
+
+    view = created[0].received_images[0].numpy_view()
+    assert view.flags["C_CONTIGUOUS"]
+    assert tuple(view[2, 3]) == (30, 20, 10)
+
+
+def test_hand_tracker_handles_a_non_contiguous_input_frame(monkeypatch) -> None:
+    created: list[_FakeLandmarker] = []
+    tracker = _hand_tracker_with_fake(monkeypatch, created)
+    base = np.zeros((8, 10, 3), dtype=np.uint8)
+    base[2, 4] = (9, 8, 7)
+    frame = base[::2, ::2]
+    assert not frame.flags["C_CONTIGUOUS"]
+
+    tracker.process(frame, t=0.0)
+
+    view = created[0].received_images[0].numpy_view()
+    assert tuple(view[1, 2]) == (7, 8, 9)  # base[2,4] -> frame[1,2]
+
+
+def test_hand_tracker_is_deterministic_across_reset(monkeypatch) -> None:
+    created: list[_FakeLandmarker] = []
+    tracker = _hand_tracker_with_fake(monkeypatch, created)
+
+    def scripted_result() -> _FakeHandResult:
+        landmarks = [_FakeLandmark(x=0.3, y=0.4) for _ in range(21)]
+        return _FakeHandResult(
+            hand_landmarks=[landmarks], handedness=[[_FakeCategory("Left", 0.77)]]
+        )
+
+    created[0]._results.append(scripted_result())
+    first = tracker.process(_make_image(), t=0.0)
+
+    tracker.reset()
+    created[1]._results.append(scripted_result())
+    second = tracker.process(_make_image(), t=0.0)
+
+    assert first == second
+
+
 # ---------------------------------------------------------------------------
 # PoseTracker
 # ---------------------------------------------------------------------------
@@ -229,9 +320,77 @@ def test_pose_reset_recreates_the_landmarker(monkeypatch) -> None:
     assert len(created) == 2
 
 
+def test_pose_tracker_passes_a_correctly_converted_image_to_the_landmarker(monkeypatch) -> None:
+    created: list[_FakeLandmarker] = []
+    tracker = _pose_tracker_with_fake(monkeypatch, created)
+    image = np.zeros((6, 8, 3), dtype=np.uint8)
+    image[4, 1] = (11, 22, 33)  # BGR
+
+    tracker.process(image, t=0.0)
+
+    view = created[0].received_images[0].numpy_view()
+    assert view.flags["C_CONTIGUOUS"]
+    assert tuple(view[4, 1]) == (33, 22, 11)
+
+
+def test_pose_tracker_handles_a_non_contiguous_input_frame(monkeypatch) -> None:
+    created: list[_FakeLandmarker] = []
+    tracker = _pose_tracker_with_fake(monkeypatch, created)
+    base = np.zeros((8, 10, 3), dtype=np.uint8)
+    base[6, 8] = (3, 4, 5)
+    frame = base[::2, ::2]
+    assert not frame.flags["C_CONTIGUOUS"]
+
+    tracker.process(frame, t=0.0)
+
+    view = created[0].received_images[0].numpy_view()
+    assert tuple(view[3, 4]) == (5, 4, 3)  # base[6,8] -> frame[3,4]
+
+
+def test_pose_tracker_is_deterministic_across_reset(monkeypatch) -> None:
+    created: list[_FakeLandmarker] = []
+    tracker = _pose_tracker_with_fake(monkeypatch, created)
+
+    def scripted_result() -> _FakePoseResult:
+        landmarks = [_FakeLandmark(x=0.2, y=0.6, visibility=0.9) for _ in range(33)]
+        return _FakePoseResult(pose_landmarks=[landmarks])
+
+    created[0]._results.append(scripted_result())
+    first = tracker.process(_make_image(), t=0.0)
+
+    tracker.reset()
+    created[1]._results.append(scripted_result())
+    second = tracker.process(_make_image(), t=0.0)
+
+    assert first == second
+
+
 # ---------------------------------------------------------------------------
 # weights_sha256
 # ---------------------------------------------------------------------------
+
+
+def test_weights_sha256_raises_file_not_found_when_no_model_file_is_vendored(
+    tmp_path, monkeypatch
+) -> None:
+    # Documents current behaviour (ISSUES.md 2026-09-29 P2 review): no
+    # .task file is vendored yet, so weights_sha256 -- which re-reads and
+    # hashes the file on every access, by design, see the docstring --
+    # raises rather than returning a stale/cached value.
+    created: list[_FakeLandmarker] = []
+
+    def fake_create_from_options(_options):
+        fake = _FakeLandmarker()
+        created.append(fake)
+        return fake
+
+    monkeypatch.setattr(
+        hands.mp_vision.HandLandmarker, "create_from_options", fake_create_from_options
+    )
+    tracker = hands.HandTracker(model_path=tmp_path / "missing.task")
+
+    with pytest.raises(FileNotFoundError):
+        _ = tracker.weights_sha256
 
 
 def test_weights_sha256_hashes_the_model_file(tmp_path, monkeypatch) -> None:
