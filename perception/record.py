@@ -436,9 +436,10 @@ def validate_run(
     if mean_diff is not None and mean_diff < _FROZEN_MEAN_ABS_DIFF:
         result.issues.append("video looks frozen (near-zero frame-to-frame difference)")
 
-    stale = _expected_deviations_stale(script, experiment_path)
-    if stale is not None:
-        result.issues.append(stale)
+    if not unknown_steps:
+        stale = _expected_deviations_stale(script, experiment_path)
+        if stale is not None:
+            result.issues.append(stale)
 
     return result
 

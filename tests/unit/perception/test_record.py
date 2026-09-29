@@ -309,6 +309,25 @@ def test_validate_run_flags_unknown_step_id(
     assert any("unknown step ids" in issue for issue in result.issues)
 
 
+def test_validate_run_flags_stale_expected_deviations_for_valid_step_ids(
+    tmp_path: Path, experiment: ExperimentDefinition
+) -> None:
+    # All step ids here are real (engine/reference.py has landed on this branch),
+    # so the staleness check must still run and catch the mismatch -- it must
+    # only be skipped when performed_steps itself is invalid.
+    run_dir = _write_run(
+        tmp_path,
+        "001-correct",
+        experiment,
+        fps=2.0,
+        n_frames=50,
+        performed_steps=["red_out", "yellow_out"],  # skips red_in_tray
+    )
+    result = record.validate_run(run_dir, experiment, EXPERIMENT_PATH)
+    assert not result.ok
+    assert any("expected_deviations is stale" in issue for issue in result.issues)
+
+
 def test_validate_run_flags_fps_mismatch(tmp_path: Path, experiment: ExperimentDefinition) -> None:
     run_dir = _write_run(
         tmp_path, "001-correct", experiment, fps=2.0, n_frames=50, script_fps=30.0
