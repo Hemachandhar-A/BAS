@@ -663,11 +663,12 @@ def test_build_report_has_the_stage_8_shape_and_notes_hands_unmeasured() -> None
 
 
 def test_build_report_names_the_forward_path_and_query_count_per_backend() -> None:
-    # This session verified empirically (not assumed) that the plain
-    # PyTorch path is 3900 queries, while the optimized (.inference())
-    # PyTorch path and the ONNX path are both 300 -- so "optimized" and
-    # "onnx" are the fair query-count-matched comparison, not "plain" and
-    # "onnx". The report must say so explicitly per candidate present.
+    # B1 correction (ISSUES.md 2026-09-29 P2 review, BLOCKING; 2026-09-30
+    # correction entry): all three RF-DETR-Nano forward paths run in eval
+    # mode (extract_pytorch_raw_outputs now ensures it -- see that
+    # function's docstring), so all three are 300 queries. The plain
+    # PyTorch path is directly comparable to "optimized" and "onnx", not
+    # a mismatched 3900-query outlier.
     records = [
         _fake_record("rfdetr_nano_pytorch__full", 1, 1, 10.0),
         _fake_record("rfdetr_nano_pytorch_optimized__full", 1, 2, 8.0),
@@ -689,7 +690,7 @@ def test_build_report_names_the_forward_path_and_query_count_per_backend() -> No
     )
 
     forward_paths = report["forward_paths"]
-    assert forward_paths["rfdetr_nano_pytorch__full"]["queries"] == 3900
+    assert forward_paths["rfdetr_nano_pytorch__full"]["queries"] == 300
     assert forward_paths["rfdetr_nano_pytorch_optimized__full"]["queries"] == 300
     assert forward_paths["rfdetr_nano_onnxruntime__full"]["queries"] == 300
     assert forward_paths["yolo11n_pytorch__full"]["queries"] is None

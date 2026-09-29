@@ -784,24 +784,34 @@ def summarize_by_position(records: list[dict[str, Any]]) -> dict[str, Any]:
 
 
 FORWARD_PATH_INFO: dict[str, dict[str, Any]] = {
-    # Verified empirically this session (ISSUES.md 2026-09-29), not
-    # assumed: model.model.model(tensor) (plain forward(), what predict()'s
-    # own eager path calls) returns (1, 3900, *) on this checkpoint.
+    # B1 correction (ISSUES.md 2026-09-29 P2 review, BLOCKING; 2026-09-30
+    # correction entry): model.model.model(tensor) (plain forward(), what
+    # predict()'s own eager path calls) returns (1, 3900, *) ONLY in
+    # training mode; extract_pytorch_raw_outputs now ensures eval mode
+    # before every call (rfdetr's lwdetr.py branches query count on
+    # self.training: num_queries*group_detr in training, num_queries in
+    # eval), so this path is 300 queries like every other row here. The
+    # earlier "3900, not comparable to optimized/onnx" claim was wrong --
+    # it measured an un-eval'd model, not an architectural difference.
     "rfdetr_nano_pytorch": {
-        "forward": "plain forward() -- eager, unoptimized (predict()'s own internal call)",
-        "queries": 3900,
+        "forward": "plain forward() -- eager, unoptimized (predict()'s own internal call, "
+        "always eval mode)",
+        "queries": 300,
     },
     # .inference() compiles via torch.jit.trace into inference_model;
     # verified empirically that THIS path is also reduced to 300 queries,
-    # matching the ONNX export exactly -- so "optimized" and "onnx" are
-    # the apples-to-apples pair here, not "plain" and "onnx".
+    # matching the ONNX export and the (now eval-mode) plain path exactly
+    # -- all three RF-DETR-Nano rows are query-count-matched.
     "rfdetr_nano_pytorch_optimized": {
         "forward": "torchscript .inference()-compiled forward (export-mode "
         "query reduction applied internally, verified empirically)",
         "queries": 300,
     },
     # forward_export, switched in via rfdetr's private
-    # _switch_to_export_mode before tracing (ISSUES.md 2026-09-29).
+    # _switch_to_export_mode before tracing (ISSUES.md 2026-09-29) -- this
+    # is the real ONNX export candidate's own path (model.export(...) in
+    # _rfdetr_onnx_candidate), unaffected by the B1 bug above, which was
+    # specific to extract_pytorch_raw_outputs's plain-PyTorch path only.
     "rfdetr_nano_onnxruntime": {
         "forward": "ONNX export graph (forward_export)",
         "queries": 300,
