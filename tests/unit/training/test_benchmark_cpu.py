@@ -151,6 +151,64 @@ def test_benchmark_predict_rejects_zero_timed_frames() -> None:
 
 
 # ---------------------------------------------------------------------------
+# _os_info: platform.release() reports "10" on Windows 11 too (ISSUES.md,
+# 2026-09-29) -- windows_build must be the authoritative field there.
+# ---------------------------------------------------------------------------
+
+
+def test_os_info_labels_windows_11_from_the_build_number() -> None:
+    class _FakeVersion:
+        build = 26200
+
+    info = benchmark_cpu._os_info(system="Windows", getwindowsversion=lambda: _FakeVersion())
+
+    assert info["windows_build"] == 26200
+    assert info["windows_release_label"] == "Windows 11"
+
+
+def test_os_info_labels_windows_10_from_the_build_number() -> None:
+    class _FakeVersion:
+        build = 19045  # the last Windows 10 build
+
+    info = benchmark_cpu._os_info(system="Windows", getwindowsversion=lambda: _FakeVersion())
+
+    assert info["windows_build"] == 19045
+    assert info["windows_release_label"] == "Windows 10"
+
+
+def test_os_info_windows_11_boundary_is_build_22000() -> None:
+    class _JustBelow:
+        build = 21999
+
+    class _JustAt:
+        build = 22000
+
+    below = benchmark_cpu._os_info(system="Windows", getwindowsversion=lambda: _JustBelow())
+    at = benchmark_cpu._os_info(system="Windows", getwindowsversion=lambda: _JustAt())
+
+    assert below["windows_release_label"] == "Windows 10"
+    assert at["windows_release_label"] == "Windows 11"
+
+
+def test_os_info_has_no_windows_fields_on_non_windows() -> None:
+    info = benchmark_cpu._os_info(system="Linux")
+
+    assert "windows_build" not in info
+    assert "windows_release_label" not in info
+    assert info["system"] == "Linux"
+
+
+def test_environment_info_uses_the_authoritative_windows_build_on_this_machine() -> None:
+    # Runs on the real machine (this repo's CI/dev boxes are Windows) --
+    # documents that environment_info() no longer relies solely on
+    # platform.platform(), which is ambiguous between Windows 10 and 11.
+    info = benchmark_cpu.environment_info()
+    if info["os"]["system"] == "Windows":
+        assert isinstance(info["os"]["windows_build"], int)
+        assert info["os"]["windows_release_label"] in ("Windows 10", "Windows 11")
+
+
+# ---------------------------------------------------------------------------
 # build_report / JSON shape
 # ---------------------------------------------------------------------------
 

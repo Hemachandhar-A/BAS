@@ -36,6 +36,7 @@ import logging
 import os
 import platform
 import statistics
+import sys
 import time
 from collections.abc import Callable
 from dataclasses import asdict, dataclass, field
@@ -137,11 +138,34 @@ def benchmark_predict(
     )
 
 
+def _os_info(
+    system: str | None = None,
+    getwindowsversion: Callable[[], Any] | None = None,
+) -> dict[str, Any]:
+    """``platform.release()``/``platform.platform()`` report "10" for
+    Windows 11 too -- Microsoft kept major.minor at 10.0 and only the
+    build number changed (11 starts at build 22000), so
+    ``platform.platform()`` alone is not authoritative on Windows
+    (ISSUES.md, 2026-09-29). ``windows_build`` (from
+    ``sys.getwindowsversion()``) is the authoritative field there;
+    ``platform_string`` is kept only for reference. ``system``/
+    ``getwindowsversion`` are injectable for tests without a real
+    Windows machine."""
+    system = system if system is not None else platform.system()
+    info: dict[str, Any] = {"system": system, "platform_string": platform.platform()}
+    if system == "Windows":
+        get_version = getwindowsversion if getwindowsversion is not None else sys.getwindowsversion
+        build = get_version().build
+        info["windows_build"] = build
+        info["windows_release_label"] = "Windows 11" if build >= 22000 else "Windows 10"
+    return info
+
+
 def environment_info() -> dict[str, Any]:
     info: dict[str, Any] = {
         "cpu_model": platform.processor() or platform.machine(),
         "logical_cpus": os.cpu_count(),
-        "os": platform.platform(),
+        "os": _os_info(),
         "python_version": platform.python_version(),
     }
     try:
@@ -168,14 +192,20 @@ def _rfdetr_pytorch_candidates() -> list[tuple[str, Callable[[np.ndarray], objec
         logger.info("rfdetr not importable; skipping RF-DETR-Nano PyTorch candidates")
         return []
 
+    from contracts import DETECTOR_MIN_CONF  # essential-features.md section 2, step 3
+
     model = RFDETRNano()  # COCO-pretrained; downloads if not cached (ISSUES.md 2026-09-29)
-    plain = ("rfdetr_nano_pytorch", lambda rgb: model.predict(rgb, threshold=0.1))
+    plain = ("rfdetr_nano_pytorch", lambda rgb: model.predict(rgb, threshold=DETECTOR_MIN_CONF))
 
     optimized_model = RFDETRNano()
-    optimized_model.optimize_for_inference()
+    # essential-features.md section 2, step 2 calls this
+    # optimize_for_inference(); the installed rfdetr (1.11.0) renamed it
+    # to inference() -- verified against the installed version's actual
+    # signature, not assumed (ISSUES.md, 2026-09-29).
+    optimized_model.inference()
     optimized = (
         "rfdetr_nano_pytorch_optimized",
-        lambda rgb: optimized_model.predict(rgb, threshold=0.1),
+        lambda rgb: optimized_model.predict(rgb, threshold=DETECTOR_MIN_CONF),
     )
     return [plain, optimized]
 
@@ -197,13 +227,21 @@ def _rfdetr_onnx_candidate() -> tuple[str, Callable[[np.ndarray], object]] | Non
     )
 
 
+_YOLO_CACHE_PATH = Path.home() / ".cache" / "ultralytics_benchmark" / "yolo11n.pt"
+"""An explicit, absolute, out-of-repo path. A bare "yolo11n.pt" downloads
+into the current working directory (confirmed the hard way: it landed at
+the repo root, ISSUES.md 2026-09-29) rather than any per-user cache --
+never pass a bare relative name to YOLO() from inside this repo."""
+
+
 def _yolo11n_candidate() -> tuple[str, Callable[[np.ndarray], object]] | None:
     try:
         from ultralytics import YOLO
     except ImportError:
         logger.info("ultralytics not importable; skipping YOLO11n candidate")
         return None
-    model = YOLO("yolo11n.pt")  # COCO-pretrained; downloads if not cached
+    _YOLO_CACHE_PATH.parent.mkdir(parents=True, exist_ok=True)
+    model = YOLO(str(_YOLO_CACHE_PATH))  # COCO-pretrained; downloads if not cached
     return ("yolo11n_pytorch", lambda rgb: model.predict(rgb, verbose=False))
 
 
