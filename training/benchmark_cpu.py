@@ -1,35 +1,36 @@
 """training/benchmark_cpu.py -- Stage 8 of the dataset pipeline (F14;
 essential-features.md section 14, Stage 8): CPU latency of the detector
-candidates on this laptop's CPU -- the "full per-frame path" (BGR -> RGB,
-predict), for RF-DETR-Nano under PyTorch (with and without
-``optimize_for_inference``, renamed to ``.inference()`` on the installed
-rfdetr -- see ISSUES.md 2026-09-29) and under ONNX Runtime, and YOLO11n as
-the benchmarked fallback (context.md section 6, ISSUES.md 2026-09-28
-"detector: RF-DETR-Nano vs YOLO11n").
+candidates on this laptop's CPU, for RF-DETR-Nano under PyTorch (with and
+without ``optimize_for_inference``, renamed to ``.inference()`` on the
+installed rfdetr -- see ISSUES.md 2026-09-29) and under ONNX Runtime, and
+YOLO11n as the benchmarked fallback (context.md section 6, ISSUES.md
+2026-09-28 "detector: RF-DETR-Nano vs YOLO11n").
 
     python -m training.benchmark_cpu [--allow-download] [--num-threads N] [--out PATH]
 
-Every row's timed content is the same shape -- resize to the model's
-input resolution, ImageNet-style normalize, run the network, decode to
-scored boxes -- so the candidates are comparable:
-- RF-DETR PyTorch (plain / ``.inference()``-optimized): ``RFDETRNano.predict()``
-  does all four stages internally (verified by reading the installed
-  rfdetr's ``detr.py`` -- resize via ``torchvision.transforms.functional.resize``
-  with ``antialias=False``, ``F.normalize`` with ImageNet mean/std, the
-  network forward, then ``PostProcess`` decodes and thresholds).
-- RF-DETR ONNX Runtime: the same four stages, done explicitly here by
-  reusing rfdetr's own shipped runtime helpers
-  (``rfdetr.export._runtime.preprocess.preprocess_to_nchw`` and
-  ``rfdetr.export._runtime.decode.decode_detections``) rather than
-  reimplementing the resize/normalize/decode math (AGENTS.md rule 1 --
-  these are exactly the functions ``rfdetr``'s own ONNX inference helper
-  calls; they are documented to be bit-exact with ``predict()``'s
-  preprocessing and to mirror ``PostProcess.forward`` exactly). These are
-  underscore-prefixed ("private") modules of the installed rfdetr==1.11.0
-  and are not a public/stable API guarantee across versions -- re-verify
-  on any rfdetr upgrade.
-- YOLO11n: ``ultralytics.YOLO.predict()`` likewise does all four stages
-  internally.
+**Two timed views per RF-DETR backend, named with a `__full`/`__network_only`
+suffix**, because they are not the same amount of work (ISSUES.md
+2026-09-29 P2 review, finding 5 -- "timed-path comparability is described
+more evenly than it is"):
+- ``__full``: the whole per-frame path a live pipeline would pay --
+  resize, ImageNet-style normalize, the network forward, decode to scored
+  boxes, *plus* whatever else that backend's own call does. RF-DETR's
+  ``predict()`` also does COCO class-name mapping and builds a
+  ``supervision.Detections``; the ONNX candidate additionally does a
+  ``PIL.Image.fromarray`` and returns a bare ``DecodedDetections`` --
+  neither is "just" resize+normalize+forward+decode, and they are not the
+  same extra work as each other.
+- ``__network_only``: one preprocessed tensor, built once, fed through the
+  bare network forward repeatedly (``model.model.model``/
+  ``.inference_model`` for PyTorch, ``session.run`` for ONNX Runtime) --
+  isolates the architecture's own cost from preprocessing/decode
+  variability. Content doesn't matter here (fixed tensor, not per-frame).
+YOLO11n stays a single ``__full`` measurement: the comparability problem
+above is specifically about RF-DETR PyTorch vs RF-DETR ONNX (the parity
+question this module exists to support), and splitting Ultralytics'
+`AutoBackend`/predictor internals for one more breakdown view was judged
+disproportionate scope for a fallback candidate -- logged as a disclosed
+scope decision, not silently skipped (ISSUES.md 2026-09-29).
 
 Hands are never measured here -- that is a separate, still-open path
 (no ``.task`` model file is vendored yet; ISSUES.md 2026-09-28 "MediaPipe
@@ -46,10 +47,13 @@ as an explicit-permission action (IMPLEMENTATION_PLAN.md R7; the exact
 sources, sizes and licenses are logged in ISSUES.md, 2026-09-29). Without
 the flag, a missing/unwilling candidate is simply skipped and reported as
 unavailable -- nothing is downloaded or installed as a side effect of
-running this script. The ONNX candidate additionally needs ``onnxruntime``,
-which is not in this project's lockfile at all (an R7 request, ISSUES.md
-2026-09-29, open) -- it silently skips itself when unimportable, same as
-any other missing candidate.
+running this script. The ONNX candidate additionally needs ``onnxruntime``
+and rfdetr's own underscore-prefixed (private) export runtime helpers --
+both now in the lockfile's ``tools`` group (ISSUES.md 2026-09-29, R7,
+merged) -- and a failure to import either is logged at **WARNING**, not
+INFO, and recorded in the report's ``"skipped"`` list with its reason,
+since silently losing a whole candidate row on a future rfdetr upgrade
+(these are not a guaranteed-stable public API) should be loud, not quiet.
 
 **Harness controls** (ISSUES.md 2026-09-29 P2 review, "run-order/drift
 labelling is weaker than it reads" -- run 2 was faster than run 1 for
@@ -61,10 +65,13 @@ own warm-up, a short cooldown separates every timed block, and the
 current ``torch.get_num_threads()`` (and, for the ONNX candidate, its
 configured ``intra_op_num_threads``) is recorded on every single run, not
 just once. The report separates a per-candidate summary (its own repeat
-values) from a per-slot "position effect" summary (mean latency at
-run-sequence position 1, 2, 3, ... across every candidate that happened
-to land there) so drift by position and drift by candidate don't get
-tangled together the way they did in the first pass.
+values) from a "position effect" summary -- **normalized per candidate**
+(each run's latency relative to that candidate's own mean, then averaged
+by slot), not a raw pooled mean by slot. A raw pool is dominated by
+*which* candidate happened to land in a slot, not drift, and will show a
+"position effect" even when nothing drifts at all (ISSUES.md 2026-09-29 P2
+review, finding 1, reproduced there with two constant-latency candidates
+in orders AB/AB/BA); normalizing first is what actually isolates drift.
 
 This module's own numbers are provisional before P1.5 (weights are
 COCO-pretrained, not the fine-tuned head; the class count differs; no
@@ -241,21 +248,51 @@ def _os_info(
     return info
 
 
+def _version_or_none(module_name: str) -> str | None:
+    """Best-effort version lookup, never raising -- for the library-version
+    record every report carries (this session's own instruction, following
+    the PR #5 review's private-API-dependency finding: a version pin here
+    is what lets a future reader tell whether a number came from the same
+    library versions this session verified against). Tries the module's
+    own ``__version__`` first; ``rfdetr`` has none (verified: `hasattr`
+    is False), so this falls back to installed-package metadata, which
+    works for any importable distribution regardless of whether the
+    module sets ``__version__`` itself."""
+    try:
+        module = __import__(module_name)
+    except ImportError:
+        return None
+    version = getattr(module, "__version__", None)
+    if version is not None:
+        return version
+    import importlib.metadata
+
+    try:
+        return importlib.metadata.version(module_name)
+    except importlib.metadata.PackageNotFoundError:
+        return None
+
+
 def environment_info() -> dict[str, Any]:
     info: dict[str, Any] = {
         "cpu_model": platform.processor() or platform.machine(),
         "logical_cpus": os.cpu_count(),
         "os": _os_info(),
         "python_version": platform.python_version(),
+        "library_versions": {
+            "torch": _version_or_none("torch"),
+            "rfdetr": _version_or_none("rfdetr"),
+            "onnxruntime": _version_or_none("onnxruntime"),
+            "ultralytics": _version_or_none("ultralytics"),
+        },
     }
     try:
         import torch
 
-        info["torch_version"] = torch.__version__
         info["torch_threads"] = torch.get_num_threads()
         info["torch_cuda_available"] = torch.cuda.is_available()
     except ImportError:
-        info["torch_version"] = None
+        pass
     return info
 
 
@@ -306,6 +343,12 @@ def check_raw_output_parity(
     )
 
 
+class ParityError(Exception):
+    """Raised by ``run_parity_check`` when PyTorch and ONNX Runtime raw
+    outputs disagree beyond tolerance. Phase 2 must stop and report before
+    measuring anything on this (this session's own instruction)."""
+
+
 def extract_pytorch_raw_outputs(
     model: Any, preprocessed_tensor: Any
 ) -> tuple[np.ndarray, np.ndarray]:
@@ -316,23 +359,88 @@ def extract_pytorch_raw_outputs(
     ``(pred_boxes, pred_logits)`` as numpy arrays with the batch
     dimension squeezed, for `check_raw_output_parity`. Duck-typed against
     RFDETR's documented internal shape (``model._is_optimized_for_inference``,
-    ``model.model.model`` / ``model.model.inference_model``) rather than a
+    ``model.model.model`` / ``model.model.inference_model``,
+    ``model._optimized_dtype``,
+    ``model._ensure_eval_mode_for_unoptimized_inference``) rather than a
     public method -- this is Phase-2-only glue, exercised here only
     against a fake stand-in; re-verify against the real object before
-    Phase 2 feeds it a real model."""
+    Phase 2 feeds it a real model. On the optimized path, ``predict()``
+    casts the input tensor to ``model._optimized_dtype`` before calling
+    ``inference_model`` (`detr.py`'s ``predictions =
+    inference_model(batch_tensor.to(dtype=self._optimized_dtype))``) --
+    omitting that cast here would time/compare a call `predict()` never
+    actually makes (ISSUES.md 2026-09-29 P2 review, finding 3).
+
+    **On the unoptimized path, this calls RFDETR's own
+    ``_ensure_eval_mode_for_unoptimized_inference()`` before the raw
+    forward** (B1 fix, ISSUES.md 2026-09-29 P2 review, BLOCKING; the
+    2026-09-30 correction entry). Without it, a freshly built model is still
+    in *training* mode (confirmed empirically against the real checkpoint:
+    a fresh ``RFDETRNano()``'s inner module reports ``.training is True``
+    until ``predict()`` -- or this call -- first flips it), and
+    ``rfdetr/models/lwdetr.py`` branches its query count on exactly that
+    flag: ``num_queries * group_detr`` (3900 on this checkpoint) in
+    training mode, ``num_queries`` (300) in eval. The earlier version of
+    this docstring attributed the ``(1, 3900, *)`` vs ``(1, 300, *)``
+    shape difference to a *different forward method*
+    (``forward_export``); that was wrong -- ``forward_export`` is a
+    separate, later switch (``rfdetr.export._backend._switch_to_export_mode``,
+    applied inside ``ExportBase.__call__``, not by ``prepare_export_graph``)
+    that this function never touches. The shape difference was always
+    just training vs. eval mode. This function's output now matches
+    ``predict()``'s own eager path unconditionally, on every call, for
+    both the ``__network_only`` *timing* candidate and any other caller."""
     import torch
 
     with torch.no_grad():
         if model._is_optimized_for_inference:
-            output = model.model.inference_model(preprocessed_tensor)
+            tensor = preprocessed_tensor.to(dtype=model._optimized_dtype)
+            output = model.model.inference_model(tensor)
         else:
+            model._ensure_eval_mode_for_unoptimized_inference()
             output = model.model.model(preprocessed_tensor)
     if isinstance(output, dict):
         boxes, logits = output["pred_boxes"], output["pred_logits"]
     else:
         boxes, logits = output[0], output[1]
-    to_numpy = lambda t: t.detach().cpu().numpy()[0]  # noqa: E731
+    to_numpy = lambda t: t.detach().float().cpu().numpy()[0]  # noqa: E731
     return to_numpy(boxes), to_numpy(logits)
+
+
+def run_parity_check(
+    pytorch_raw_fn: Callable[[Any], tuple[np.ndarray, np.ndarray]],
+    onnx_raw_fn: Callable[[np.ndarray], tuple[np.ndarray, np.ndarray]],
+    preprocessed_tensor_torch: Any,
+    preprocessed_tensor_numpy: np.ndarray,
+    box_atol: float = 1e-3,
+    logit_atol: float = 1e-2,
+) -> ParityResult:
+    """The end-to-end parity runner (this session's own instruction, A2):
+    feeds the SAME preprocessed input through both backends --
+    ``pytorch_raw_fn`` is ``build_pytorch_export_mode_forward(model)``,
+    prepared the way rfdetr's own export pipeline prepares a model (see
+    that function's docstring for the B1 correction: both it and
+    ``extract_pytorch_raw_outputs`` are now eval-mode and compute the
+    same thing on the plain path; ``build_pytorch_export_mode_forward``
+    remains the reference here because it is built the way the real
+    exporter builds it, not because of a shape mismatch), and
+    ``onnx_raw_fn`` a small ONNX-session-runner built the same way the
+    real ``__network_only`` candidate is -- and raises ``ParityError`` if
+    they disagree beyond tolerance. Phase 2 calls this for real before
+    any timed run; this function itself is exercised here only against
+    fakes (pass/fail), per this session's own instruction."""
+    pytorch_boxes, pytorch_logits = pytorch_raw_fn(preprocessed_tensor_torch)
+    onnx_boxes, onnx_logits = onnx_raw_fn(preprocessed_tensor_numpy)
+    result = check_raw_output_parity(
+        pytorch_boxes, pytorch_logits, onnx_boxes, onnx_logits, box_atol, logit_atol
+    )
+    if not result.within_tolerance:
+        raise ParityError(
+            "PyTorch and ONNX Runtime raw outputs disagree beyond tolerance: "
+            f"max box diff {result.max_box_abs_diff} (atol {box_atol}), "
+            f"max logit diff {result.max_logit_abs_diff} (atol {logit_atol})"
+        )
+    return result
 
 
 # ---------------------------------------------------------------------------
@@ -348,18 +456,48 @@ class Candidate:
     onnx_intra_op_threads: int | None = None
 
 
-def _rfdetr_pytorch_candidates() -> list[Candidate]:
+@dataclass
+class RealCandidates:
+    candidates: list[Candidate]
+    skipped: list[dict[str, str]]
+    # For Phase 2's parity check (run_parity_check): the plain (unoptimized)
+    # PyTorch model and the ONNX session, so the check reuses what was
+    # already built rather than constructing (and re-exporting) again.
+    pytorch_model: Any | None = None
+    onnx_session: Any | None = None
+    onnx_input_meta: tuple[int, int, int] | None = None  # (channels, height, width)
+
+
+def _rfdetr_pytorch_candidates() -> tuple[list[Candidate], Any | None]:
     try:
         from rfdetr import RFDETRNano
     except ImportError:
         logger.info("rfdetr not importable; skipping RF-DETR-Nano PyTorch candidates")
-        return []
+        return [], None
+
+    import torch
+    from PIL import Image as PILImage
+    from rfdetr.export._runtime.preprocess import preprocess_to_nchw
 
     from contracts import DETECTOR_MIN_CONF  # essential-features.md section 2, step 3
 
     model = RFDETRNano()  # COCO-pretrained; downloads if not cached (ISSUES.md 2026-09-29)
-    plain = Candidate(
-        "rfdetr_nano_pytorch", lambda rgb: model.predict(rgb, threshold=DETECTOR_MIN_CONF)
+    full = Candidate(
+        "rfdetr_nano_pytorch__full", lambda rgb: model.predict(rgb, threshold=DETECTOR_MIN_CONF)
+    )
+
+    # A fixed preprocessed tensor, built once and reused for every timed
+    # call, isolates the bare network forward from per-frame preprocessing
+    # (A3: "time two views for every backend" -- ISSUES.md 2026-09-29 P2
+    # review, finding 5). Content doesn't matter for latency (essential-
+    # features.md section 0); a blank image is enough.
+    resolution = model.model.resolution
+    fixed_tensor = torch.from_numpy(
+        preprocess_to_nchw(PILImage.new("RGB", (resolution, resolution)), resolution, resolution, 3)
+    )
+    network_only = Candidate(
+        "rfdetr_nano_pytorch__network_only",
+        lambda rgb: extract_pytorch_raw_outputs(model, fixed_tensor),
     )
 
     optimized_model = RFDETRNano()
@@ -368,26 +506,41 @@ def _rfdetr_pytorch_candidates() -> list[Candidate]:
     # to inference() -- verified against the installed version's actual
     # signature, not assumed (ISSUES.md, 2026-09-29).
     optimized_model.inference()
-    optimized = Candidate(
-        "rfdetr_nano_pytorch_optimized",
+    optimized_full = Candidate(
+        "rfdetr_nano_pytorch_optimized__full",
         lambda rgb: optimized_model.predict(rgb, threshold=DETECTOR_MIN_CONF),
     )
-    return [plain, optimized]
+    optimized_network_only = Candidate(
+        "rfdetr_nano_pytorch_optimized__network_only",
+        lambda rgb: extract_pytorch_raw_outputs(optimized_model, fixed_tensor),
+    )
+
+    # The plain (unoptimized) model is what Phase 2's parity check
+    # compares against ONNX -- "does the export match PyTorch" is a
+    # different question from "does torchscript compilation match eager
+    # PyTorch", which optimized_model would conflate in.
+    return [full, network_only, optimized_full, optimized_network_only], model
 
 
-def _rfdetr_onnx_candidate(num_threads: int) -> Candidate | None:
+def _rfdetr_onnx_candidate(
+    num_threads: int,
+) -> tuple[list[Candidate], Any | None, tuple[int, int, int] | None, str | None]:
+    """Returns (candidates, session, (channels, height, width), skip_reason).
+    On any ImportError, candidates is [] and skip_reason names why -- logged
+    at WARNING (not INFO): these are underscore-prefixed rfdetr helpers and
+    onnxruntime, neither a guaranteed-stable/always-installed dependency, so
+    losing this whole row silently on a future upgrade should be loud
+    (ISSUES.md 2026-09-29 P2 review, finding 4)."""
     try:
         import onnxruntime as ort
         from PIL import Image as PILImage
         from rfdetr import RFDETRNano
         from rfdetr.export._runtime.decode import decode_detections
         from rfdetr.export._runtime.preprocess import preprocess_to_nchw
-    except ImportError:
-        logger.info(
-            "onnxruntime and/or rfdetr's export runtime helpers not importable; "
-            "skipping ONNX candidate"
-        )
-        return None
+    except ImportError as exc:
+        reason = f"onnxruntime and/or rfdetr's export runtime helpers not importable: {exc}"
+        logger.warning("%s -- skipping ONNX candidate", reason)
+        return [], None, None, reason
 
     from contracts import DETECTOR_MIN_CONF
 
@@ -405,9 +558,15 @@ def _rfdetr_onnx_candidate(num_threads: int) -> Candidate | None:
 
     options = ort.SessionOptions()
     options.intra_op_num_threads = num_threads
-    # Matches rfdetr's own _create_onnx_session (export/_onnx/inference.py):
-    # spinning contends for CPU with this process's own preprocessing.
+    # rfdetr's own _create_onnx_session (export/_onnx/inference.py)
+    # disables both intra_op and inter_op spinning; matched exactly here
+    # (this session never requests ORT_PARALLEL execution mode, so no
+    # inter-op pool is ever created either way -- rfdetr's own comment
+    # says the same -- but the earlier version of this comment claimed a
+    # full match while only setting intra_op; corrected, not just
+    # reworded, ISSUES.md 2026-09-29 P2 review, finding 5).
     options.add_session_config_entry("session.intra_op.allow_spinning", "0")
+    options.add_session_config_entry("session.inter_op.allow_spinning", "0")
     session = ort.InferenceSession(
         str(onnx_path), sess_options=options, providers=["CPUExecutionProvider"]
     )
@@ -419,7 +578,7 @@ def _rfdetr_onnx_candidate(num_threads: int) -> Candidate | None:
     boxes_idx = next(i for i, n in enumerate(output_names) if "dets" in n)
     logits_idx = next(i for i, n in enumerate(output_names) if "labels" in n)
 
-    def predict_fn(rgb: np.ndarray) -> object:
+    def full_predict_fn(rgb: np.ndarray) -> object:
         pil_img = PILImage.fromarray(rgb)
         tensor = preprocess_to_nchw(pil_img, height, width, channels)
         raw = session.run(None, {input_name: tensor})
@@ -436,7 +595,22 @@ def _rfdetr_onnx_candidate(num_threads: int) -> Candidate | None:
             background_class_id=None,
         )
 
-    return Candidate("rfdetr_nano_onnxruntime", predict_fn, onnx_intra_op_threads=num_threads)
+    fixed_tensor = preprocess_to_nchw(PILImage.new("RGB", (width, height)), height, width, channels)
+
+    def network_only_predict_fn(rgb: np.ndarray) -> object:
+        return session.run(None, {input_name: fixed_tensor})
+
+    candidates = [
+        Candidate(
+            "rfdetr_nano_onnxruntime__full", full_predict_fn, onnx_intra_op_threads=num_threads
+        ),
+        Candidate(
+            "rfdetr_nano_onnxruntime__network_only",
+            network_only_predict_fn,
+            onnx_intra_op_threads=num_threads,
+        ),
+    ]
+    return candidates, session, (channels, height, width), None
 
 
 def _yolo11n_candidate() -> Candidate | None:
@@ -455,21 +629,49 @@ def _yolo11n_candidate() -> Candidate | None:
         # and correctness here doesn't cost the other candidates anything.
         return model.predict(_rgb_to_contiguous_bgr(rgb), verbose=False)
 
-    return Candidate("yolo11n_pytorch", predict_fn)
+    # YOLO11n stays a single __full measurement -- see the module
+    # docstring for why a __network_only split isn't done here too.
+    return Candidate("yolo11n_pytorch__full", predict_fn)
 
 
-def collect_real_candidates(allow_download: bool, num_threads: int) -> list[Candidate]:
+def collect_real_candidates(allow_download: bool, num_threads: int) -> RealCandidates:
     if not allow_download:
         logger.info("--allow-download not set; no real candidate will be constructed")
-        return []
-    candidates = list(_rfdetr_pytorch_candidates())
-    onnx_candidate = _rfdetr_onnx_candidate(num_threads)
-    if onnx_candidate is not None:
-        candidates.append(onnx_candidate)
+        return RealCandidates(candidates=[], skipped=[])
+
+    candidates: list[Candidate] = []
+    skipped: list[dict[str, str]] = []
+
+    pytorch_candidates, pytorch_model = _rfdetr_pytorch_candidates()
+    candidates.extend(pytorch_candidates)
+    if pytorch_model is None:
+        skipped.append(
+            {
+                "candidate": "rfdetr_nano_pytorch(_optimized)",
+                "reason": "rfdetr not importable",
+            }
+        )
+
+    onnx_candidates, onnx_session, onnx_input_meta, onnx_skip_reason = _rfdetr_onnx_candidate(
+        num_threads
+    )
+    candidates.extend(onnx_candidates)
+    if onnx_skip_reason is not None:
+        skipped.append({"candidate": "rfdetr_nano_onnxruntime", "reason": onnx_skip_reason})
+
     yolo_candidate = _yolo11n_candidate()
     if yolo_candidate is not None:
         candidates.append(yolo_candidate)
-    return candidates
+    else:
+        skipped.append({"candidate": "yolo11n_pytorch", "reason": "ultralytics not importable"})
+
+    return RealCandidates(
+        candidates=candidates,
+        skipped=skipped,
+        pytorch_model=pytorch_model,
+        onnx_session=onnx_session,
+        onnx_input_meta=onnx_input_meta,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -556,22 +758,83 @@ def summarize_by_candidate(records: list[dict[str, Any]]) -> dict[str, Any]:
 
 
 def summarize_by_position(records: list[dict[str, Any]]) -> dict[str, Any]:
-    """Mean latency at each in-round slot (1st candidate run that round,
-    2nd, ...), pooled across every candidate that happened to land there
-    -- since candidate order is shuffled per round, a slot isn't tied to
-    one candidate, so a trend here points at warm-up/thermal drift by
-    position rather than a slow candidate."""
+    """Mean **normalized** latency at each in-round slot (1st candidate run
+    that round, 2nd, ...): each run's ``mean_ms`` is first divided by that
+    run's *own candidate's* mean across all its repeats, then those ratios
+    are pooled by slot. A raw pooled mean by slot (this function's first
+    version) is dominated by which candidate happened to land in the slot,
+    not by drift -- reproduced with two constant-latency candidates
+    A=10ms/B=20ms in orders AB, AB, BA: the raw pool reports slot 1 =
+    13.33ms and slot 2 = 16.67ms, a fake "position effect", even though
+    neither candidate drifts at all (ISSUES.md 2026-09-29 P2 review,
+    finding 1). Normalizing first means a candidate that never drifts
+    contributes exactly 1.0 to every slot it lands in, regardless of
+    which slot that is, so the same fixture now correctly reports no
+    difference between slots."""
+    candidate_means: dict[str, list[float]] = {}
+    for r in records:
+        candidate_means.setdefault(r["candidate"], []).append(r["mean_ms"])
+    candidate_mean_ms = {name: statistics.mean(values) for name, values in candidate_means.items()}
+
     by_slot: dict[int, list[float]] = {}
     for r in records:
-        by_slot.setdefault(r["slot"], []).append(r["mean_ms"])
+        baseline = candidate_mean_ms[r["candidate"]]
+        relative = r["mean_ms"] / baseline if baseline > 0 else 1.0
+        by_slot.setdefault(r["slot"], []).append(relative)
     return {
-        str(slot): {"mean_ms_avg": statistics.mean(values), "n": len(values)}
+        str(slot): {"relative_mean": statistics.mean(values), "n": len(values)}
         for slot, values in sorted(by_slot.items())
     }
 
 
+FORWARD_PATH_INFO: dict[str, dict[str, Any]] = {
+    # B1 correction (ISSUES.md 2026-09-29 P2 review, BLOCKING; 2026-09-30
+    # correction entry): model.model.model(tensor) (plain forward(), what
+    # predict()'s own eager path calls) returns (1, 3900, *) ONLY in
+    # training mode; extract_pytorch_raw_outputs now ensures eval mode
+    # before every call (rfdetr's lwdetr.py branches query count on
+    # self.training: num_queries*group_detr in training, num_queries in
+    # eval), so this path is 300 queries like every other row here. The
+    # earlier "3900, not comparable to optimized/onnx" claim was wrong --
+    # it measured an un-eval'd model, not an architectural difference.
+    "rfdetr_nano_pytorch": {
+        "forward": "plain forward() -- eager, unoptimized (predict()'s own internal call, "
+        "always eval mode)",
+        "queries": 300,
+    },
+    # .inference() compiles via torch.jit.trace into inference_model;
+    # verified empirically that THIS path is also reduced to 300 queries,
+    # matching the ONNX export and the (now eval-mode) plain path exactly
+    # -- all three RF-DETR-Nano rows are query-count-matched.
+    "rfdetr_nano_pytorch_optimized": {
+        "forward": "torchscript .inference()-compiled forward (export-mode "
+        "query reduction applied internally, verified empirically)",
+        "queries": 300,
+    },
+    # forward_export, switched in via rfdetr's private
+    # _switch_to_export_mode before tracing (ISSUES.md 2026-09-29) -- this
+    # is the real ONNX export candidate's own path (model.export(...) in
+    # _rfdetr_onnx_candidate), unaffected by the B1 bug above, which was
+    # specific to extract_pytorch_raw_outputs's plain-PyTorch path only.
+    "rfdetr_nano_onnxruntime": {
+        "forward": "ONNX export graph (forward_export)",
+        "queries": 300,
+    },
+    "yolo11n_pytorch": {
+        "forward": "YOLO11n architecture -- not a DETR query head, no comparable count",
+        "queries": None,
+    },
+}
+
+
+def _forward_path_for(candidate_name: str) -> dict[str, Any] | None:
+    base_name = candidate_name.split("__", 1)[0]
+    return FORWARD_PATH_INFO.get(base_name)
+
+
 def build_report(
     records: list[dict[str, Any]],
+    skipped: list[dict[str, str]],
     warmup_frames: int,
     timed_frames: int,
     frame_width: int,
@@ -580,7 +843,12 @@ def build_report(
     seed: int,
     cooldown_s: float,
     num_threads: int,
+    parity: ParityResult | None = None,
 ) -> dict[str, Any]:
+    candidate_names = {r["candidate"] for r in records}
+    forward_paths = {
+        name: info for name in candidate_names if (info := _forward_path_for(name)) is not None
+    }
     return {
         "generated_at": datetime.now(UTC).isoformat(),
         "provisional": True,
@@ -592,14 +860,131 @@ def build_report(
             "num_threads_requested": num_threads,
             "candidate_order": "shuffled independently each repeat round, fixed seed",
         },
+        "forward_paths": forward_paths,
         "warmup_frames": warmup_frames,
         "timed_frames": timed_frames,
         "frame_size": [frame_width, frame_height],
         "not_measured": list(NOT_MEASURED),
+        "skipped": skipped,
+        "parity_check": (asdict(parity) if parity is not None else None),
         "per_run": records,
         "per_candidate_summary": summarize_by_candidate(records),
         "position_effect": summarize_by_position(records),
     }
+
+
+def _build_shared_parity_tensor(
+    real: RealCandidates, frames: list[np.ndarray]
+) -> tuple[Any, np.ndarray]:
+    """B3/A2: builds ONE preprocessed tensor from a real frame, shared
+    between the PyTorch and ONNX Runtime raw-output paths (the same tensor
+    values, two array libraries) -- reusing rfdetr's own preprocess_to_nchw
+    rather than reimplementing it, per the module docstring."""
+    import torch
+    from PIL import Image as PILImage
+    from rfdetr.export._runtime.preprocess import preprocess_to_nchw
+
+    channels, height, width = real.onnx_input_meta  # type: ignore[misc]
+    frame_rgb = _bgr_to_contiguous_rgb(frames[0])
+    pil_img = PILImage.fromarray(frame_rgb)
+    numpy_tensor = preprocess_to_nchw(pil_img, height, width, channels)
+    return torch.from_numpy(numpy_tensor), numpy_tensor
+
+
+def build_pytorch_export_mode_forward(model: Any) -> Callable[[Any], tuple[np.ndarray, np.ndarray]]:
+    """Builds a callable for the ONNX *parity* comparison: the model in
+    eval mode, prepared the same way rfdetr's own export pipeline prepares
+    it, before the exporter-specific tracing step.
+
+    **B1 correction** (ISSUES.md 2026-09-29 P2 review, BLOCKING; 2026-09-30
+    correction entry): this docstring previously claimed the ``(1, 3900, *)``
+    vs ``(1, 300, *)`` shape difference from ``extract_pytorch_raw_outputs``
+    was caused by a *different forward method*
+    (``forward_export``, switched in via the private
+    ``rfdetr.export._backend._switch_to_export_mode``). That was wrong.
+    Reading ``rfdetr/export/prepare.py``'s ``prepare_export_graph`` shows
+    it only freezes DINOv2's position embeddings to the export shape and
+    calls ``.eval()`` -- it never calls ``_switch_to_export_mode``; that
+    switch happens later, inside ``rfdetr/export/base.py``'s
+    ``ExportBase.__call__`` (its own comment: *"the model arrives from
+    prepare_export_graph in its training forward"*), which this function
+    never invokes. So the ``(1, 300, *)`` shape this function has always
+    produced comes from ``.eval()`` alone -- the same
+    ``self.training`` branch in ``rfdetr/models/lwdetr.py`` that
+    ``extract_pytorch_raw_outputs`` now also guards before its own raw
+    forward (see that function's docstring). With both functions eval'd,
+    they compute the *same* thing on the plain (non-optimized) path; this
+    one remains the right reference for the ONNX parity check because it
+    is built the way rfdetr's own export pipeline prepares a model, on an
+    explicit **deep copy** of ``model.model.model`` -- ``prepare_export_graph``
+    mutates shape state that would silently corrupt a later ``predict()``
+    call on the original if applied there directly (ISSUES.md 2026-09-29).
+    Reuses rfdetr's own ``prepare_export_graph`` throughout (AGENTS.md
+    rule 1: reuse libraries, don't reimplement)."""
+    import copy
+
+    from rfdetr.export.prepare import prepare_export_graph
+
+    resolution = model.model.resolution
+    core = copy.deepcopy(model.model.model.to("cpu"))
+    graph = prepare_export_graph(
+        core, model.model_config, shape=(resolution, resolution), device="cpu"
+    )
+
+    def forward(tensor: Any) -> tuple[np.ndarray, np.ndarray]:
+        import torch
+
+        with torch.no_grad():
+            output = graph.model(tensor)
+        boxes = output["pred_boxes"].detach().cpu().numpy()[0]
+        logits = output["pred_logits"].detach().cpu().numpy()[0]
+        return boxes, logits
+
+    return forward
+
+
+def run_phase2_parity_check(
+    real: RealCandidates,
+    frames: list[np.ndarray],
+    box_atol: float = 1e-3,
+    logit_atol: float = 1e-2,
+) -> ParityResult:
+    """B3: the real parity check. Reuses the ONNX session
+    ``collect_real_candidates`` already built (no second export). Builds a
+    *separate* export-mode PyTorch reference from a deep copy of the plain
+    model (see ``build_pytorch_export_mode_forward`` -- this is
+    deliberately not ``extract_pytorch_raw_outputs``, which computes a
+    different thing on this checkpoint). Raises ``ParityError``
+    (propagated from ``run_parity_check``) if they disagree beyond
+    tolerance -- the caller (``main``) must not proceed to any timed run
+    in that case."""
+    if real.pytorch_model is None or real.onnx_session is None or real.onnx_input_meta is None:
+        raise ParityError(
+            "cannot run the parity check: the PyTorch model and/or ONNX session were not "
+            "built (see the report's 'skipped' list for why)"
+        )
+
+    torch_tensor, numpy_tensor = _build_shared_parity_tensor(real, frames)
+    pytorch_export_forward = build_pytorch_export_mode_forward(real.pytorch_model)
+
+    session = real.onnx_session
+    input_name = session.get_inputs()[0].name
+    output_names = [o.name for o in session.get_outputs()]
+    boxes_idx = next(i for i, n in enumerate(output_names) if "dets" in n)
+    logits_idx = next(i for i, n in enumerate(output_names) if "labels" in n)
+
+    def onnx_raw_fn(np_tensor: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+        raw = session.run(None, {input_name: np_tensor})
+        return raw[boxes_idx][0], raw[logits_idx][0]
+
+    return run_parity_check(
+        pytorch_export_forward,
+        onnx_raw_fn,
+        torch_tensor,
+        numpy_tensor,
+        box_atol,
+        logit_atol,
+    )
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -627,6 +1012,13 @@ def main(argv: list[str] | None = None) -> int:
         "checkpoint if one isn't already cached locally (see the module docstring)",
     )
     parser.add_argument(
+        "--check-parity",
+        action="store_true",
+        help="run the PyTorch-vs-ONNX parity check (B3) before any timed run, and stop "
+        "with a non-zero exit if it fails, instead of measuring anything (requires "
+        "--allow-download)",
+    )
+    parser.add_argument(
         "--out",
         type=Path,
         default=DEFAULT_OUT_PATH,
@@ -640,11 +1032,30 @@ def main(argv: list[str] | None = None) -> int:
         rng.integers(0, 256, size=(args.height, args.width, 3), dtype=np.uint8) for _ in range(8)
     ]
 
-    candidates = collect_real_candidates(args.allow_download, args.num_threads)
-    if not candidates:
+    real = collect_real_candidates(args.allow_download, args.num_threads)
+    if not real.candidates:
         logger.warning("no candidates available -- nothing to benchmark")
+    for skip in real.skipped:
+        logger.warning("skipped %s: %s", skip["candidate"], skip["reason"])
+
+    parity_result: ParityResult | None = None
+    if args.check_parity:
+        if not args.allow_download:
+            logger.error("--check-parity requires --allow-download")
+            return 2
+        try:
+            parity_result = run_phase2_parity_check(real, frames)
+        except ParityError as exc:
+            logger.error("parity check failed -- stopping before any timed run: %s", exc)
+            return 1
+        logger.info(
+            "parity check passed: max box diff %.6g, max logit diff %.6g",
+            parity_result.max_box_abs_diff,
+            parity_result.max_logit_abs_diff,
+        )
+
     records = run_suite(
-        candidates,
+        real.candidates,
         frames,
         args.warmup,
         args.frames,
@@ -656,6 +1067,7 @@ def main(argv: list[str] | None = None) -> int:
 
     report = build_report(
         records,
+        real.skipped,
         args.warmup,
         args.frames,
         args.width,
@@ -664,6 +1076,7 @@ def main(argv: list[str] | None = None) -> int:
         args.seed,
         args.cooldown,
         args.num_threads,
+        parity=parity_result,
     )
     args.out.parent.mkdir(parents=True, exist_ok=True)
     args.out.write_text(json.dumps(report, indent=2), encoding="utf-8")
