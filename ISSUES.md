@@ -734,3 +734,18 @@ forward into the zero-shot prompts when `training/prompts.yaml` is written.
 - Status: RESOLVED for this branch. `python scripts/check.py`: full suite green. `python scripts/check.py
   --status`: **F1-F14 all GREEN** (F2 has no tests, as before). Nothing in this entry is merged into
   `develop`; the PR from `p2-runtime` into `develop` is opened by the operator, by hand.
+
+## 2026-09-30 P1 R7 - kaggle CLI, dev-time only, installed outside the lockfile
+
+- **Package:** `kaggle` 2.2.4, licence Apache-2.0.
+- **Where:** installed as an isolated `uv tool` (`uv tool run kaggle ...`), **not** added to this project's
+  lockfile or any dependency group -- it is dev-time-only tooling for the P1.5 GPU training environment
+  (IMPLEMENTATION_PLAN.md 3.2), never a runtime dependency, and never present on the offline demo laptop.
+- **Auth:** a new-style Kaggle API token (`~/.kaggle/access_token`, outside the repo, never printed, read or
+  copied by this session). Authentication was verified by the user beforehand and re-checked here with one
+  read-only call, `uv tool run kaggle datasets list --mine`, which listed the account's existing datasets
+  without creating, modifying or deleting anything.
+- **Dataset creation rule (not yet done):** this project's own dataset, when created, must be a **private**
+  dataset under its own slug -- suggested `hemachandhara/sih26174-frames` -- and must not touch, modify or
+  delete any of the account's other listed datasets.
+- Status: DECIDED. Read-only auth check done; no dataset created yet.
