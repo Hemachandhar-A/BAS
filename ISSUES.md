@@ -837,3 +837,107 @@ forward into the zero-shot prompts when `training/prompts.yaml` is written.
   essential-features.md section 3 aren't part of this batch), or full pipeline fps (this measures the hand
   tracker alone, not the per-frame path `training/benchmark_cpu.py` times).
 - Status: DONE, informational only. No thresholds tuned, no config changed.
+
+## 2026-09-30 S-C note - S-B PR reviewed after the fact
+
+S-B PR merged before its review by the Lead's mistake; reviewed after the fact in S-C; result: PASS -- scope
+clean (perception/, tests, runs/ script.json+provenance.csv+manifest.csv, weights/MANIFEST.json, ISSUES.md
+only; no video/.task/credential/binary tracked); `adopt.py --dry-run`'s split table reproduced identically;
+`weights/MANIFEST.json`'s sha256/size match the vendored file exactly; the hand smoke test's detection counts
+reproduced exactly (27/40, Right 27/Left 2 -- deterministic model inference), latency reproduced within
+expected wall-clock variance (51.3ms vs. the logged 55.0ms mean, both wall-clock timing, not deterministic);
+x014 and x023's "frozen" flags are both false positives of the validator's first-30-frames-only sampling --
+full-clip mean frame diff is 1.464 (x014) and 0.543 (x023), neither near-zero, so neither clip is actually
+frozen; `check.py` full suite green (395 passed) and `--status` all GREEN (F14 78/78). `p1-perception`
+fast-forwarded to `origin/develop` (`f327ba2`) and pushed, no force needed.
+
+## 2026-09-30 P1.2 R7 - Grounding DINO tiny: license recorded; checkpoint 1 spike results
+
+- **License** (resolves the 2026-09-28 "licenses of auto-labeling tools not yet verified" DECISION for this
+  tool): Apache-2.0, `IDEA-Research/grounding-dino-tiny` (Hugging Face model card, cross-checked at
+  https://huggingface.co/IDEA-Research/grounding-dino-tiny). Downloaded once via `transformers` (already
+  installed, 5.17.0, not a new dependency) to the default Hugging Face cache (outside the repo, like the
+  RF-DETR/YOLO checkpoints at P1.5 -- never at `weights/`, never committed). Only `model.safetensors` (689,359,096
+  bytes, sha256 `1a2412ef99bd74bc...`, full digest in `data/spikes/report.json`'s `model` key, git-ignored)
+  downloaded -- `pytorch_model.bin` (a duplicate in another format, also listed in the repo) was not fetched,
+  since `safetensors` is already installed and `transformers` prefers it. Total download ~690 MB, under the
+  1.5 GB approval.
+- **YOLO-World was not tried this session** -- only Grounding DINO tiny, per the checkpoint 1 scope. The
+  license/speed/accuracy comparison DECISION is checkpoint 3's, not this entry's.
+- **Prompts tried** (every wording, as required): `outer_box`: "a cardboard box.", "a brown cardboard box." --
+  `tray`: "a tray.", "a grey book." -- `red_box`: "a red box.", "a red container." -- `yellow_box`: "a yellow
+  box.", "a lime green container." -- `start_button`: "a start button.", "a white index card.".
+- **Methodology note, found the hard way**: a first attempt queried all 10 phrases together in one call per
+  frame; Grounding DINO's returned text spans blend across phrase boundaries in a long multi-class query (e.g.
+  a combined query came back labelled "cardboard box red box" / "a a red box", matching neither submitted
+  phrase), so results could not be attributed back to a class by string match -- every one of 600 calls
+  silently produced zero usable detections this way. Fixed by querying one phrase at a time (600 forward
+  calls total: 5 classes x 2 phrasings x 60 frames), which removes the ambiguity at the cost of throughput.
+  Also found and fixed: the installed `transformers` 5.17.0 renamed the model card's documented
+  `box_threshold` kwarg to `threshold` (verified via `inspect.signature`).
+- **Speed**: the processor's default resize (shortest_edge=800, longest_edge=1333) upscales this rig's
+  848x480 frames to 1333x755 and took ~12s/forward-call on this CPU. Reduced to shortest_edge=480,
+  longest_edge=800 (a mild resize close to native resolution, not an upscale): ~4.08s/call mean (600 calls,
+  min 3.39s, max 7.21s), i.e. ~40.8s of detector time per frame across all 10 phrasings -- the full 60-frame,
+  12-run spike took about 41 minutes. This is far too slow for a live/Tier-1 use (irrelevant -- Grounding DINO
+  is proposed only for offline auto-labeling, F14 Stage 3, never the runtime detector), but at this per-frame
+  cost the real dataset (~2,000-3,000 train frames, essential-features.md section 14 Stage 2) would take on
+  the order of a full day if run the same way (one call per class per phrasing); Stage 3 should use one
+  phrasing per class, not two, and/or accept a further resolution/threshold trade-off.
+- **Found rate was 5/5 classes at 100% (60/60 frames) -- but this number is misleading on its own.** Sampled
+  60 frames, seeded (seed 0), 5 frames each spread across the full duration of 12 train runs (all script_types
+  present in train: 1 idle (`x023`), 1 repeat (`x027`), 3 of 5 skip, 3 of 5 swap, 4 of 14 correct -- runs:
+  `x006,x007,x010,x020,x023,x027,x029,x030,x031,x034,x039,x044`). "Found" only means *some* box in the sanity
+  area band (0.1%-60% of frame) was returned for that class -- not that it was the *correct* box. See the next
+  point.
+- **Wrong-class confusion is severe and goes beyond red-vs-yellow.** In 40/60 frames (67%), `red_box` and
+  `yellow_box`'s single best-scoring boxes overlap with IoU > 0.5 (many at IoU > 0.99 -- literally the same
+  box). Manually re-rendered three of these frames at full resolution to see what was actually happening
+  (`data/spikes/debug_full_x006_88.jpg`, `..._x023_55.jpg`, `..._x029_253.jpg`, not committed, git-ignored):
+  in two of the three, **`outer_box`, `red_box` and `yellow_box` all converge on the identical box -- the
+  whole cardboard outer box itself** (IoU between every pair > 0.99), while the two actual small containers
+  visibly sitting inside it go completely unmatched by their own class's prompts. E.g. on `x006` frame 88,
+  "a yellow box." scored 0.757 on the *whole cardboard box* while "a lime green container." correctly found
+  the real lime container at only 0.641 -- `select_best_in_band`'s "highest score wins" rule (as specified,
+  essential-features.md section 14 Stage 3) picks the wrong one. This is a genuine zero-shot grounding failure
+  on this rig, not a prompt-wording problem alone: "a red box."/"a red container." and "a yellow box."/"a lime
+  green container." all separately matched the same brown cardboard region on affected frames, regardless of
+  color words. In the one frame checked where classes did separate correctly (`x029` frame 253), the correctly
+  isolated `yellow_box` measured **0.0493 frame-area-fraction**, versus **~0.23-0.25 for the colliding
+  whole-box match** -- a large, clean gap. This suggests the checkpoint 1 sanity area band (0.1%-60%, far too
+  wide) is a likely fixable cause: a tighter per-class band (something like 0.5%-15% for the two containers,
+  informed by the measured 0.0493 clean sample above, versus a wider band for `outer_box` itself) would reject
+  most of these whole-box false matches before the highest-score rule ever sees them. **Not applied here** --
+  checkpoint 1's job was to measure and report, not to re-tune; this is a recommendation for checkpoint 3, not
+  a result.
+- **`tray` and `start_button` localize reliably.** Manually confirmed correct in every full-resolution frame
+  checked: `tray` ("a grey book." usually outscored "a tray.") correctly bounds the real grey book/tray
+  surface, and `start_button` correctly bounds the real white index card, both distinct from the cardboard box
+  collision above. Aggregate area fractions: `tray` 0.14-0.27 (median 0.150), `start_button` 0.019-0.194
+  (median 0.026, consistent with it being the smallest object). Static-object box stability (IoU of each
+  frame's box against that run's own 5-frame median, essential-features.md section 14 Stage 3's "static-object
+  smoothing"): `outer_box` very stable (mean IoU 0.991 across all 12 runs, worst-run mean 0.977); `tray` and
+  `start_button` both show at least one IoU=0.000 outlier frame in roughly half the runs (full per-run table
+  in `data/spikes/report.json`'s `static_box_stability_iou`) -- an occasional bad frame, not a systemic miss.
+- **Measured hue** (OpenCV 0-179 scale, mean hue inside each frame's selected `red_box`/`yellow_box` box):
+  `red_box` 10.8-36.6 (median 29.2), `yellow_box` 21.7-52.6 (median 32.2) -- heavily overlapping ranges,
+  consistent with the 2026-09-30 "crew footage intake" DECISION's observation that the yellow container's
+  real hue leans lime/olive, close to red-orange. **Caveat: these hue numbers are contaminated by the
+  collision above** -- on the ~40/60 frames where `yellow_box`'s selected box is actually the brown cardboard
+  box (or the red container), its "hue" sample is not a clean read of the real lime container's color. A
+  hue-based read of the *actual* lime container needs re-measurement from only the frames where the collision
+  above did not happen (not done in this session -- flagged for whoever refines the area band).
+- **Gloves**: none of the 12 sampled runs were the robustness/gloves runs (out of this spike's scope; the
+  hand tracker's own gloves caveat is unchanged from the 2026-09-30 hand_landmarker smoke test entry above).
+- **Artifacts** (all git-ignored, `data/`): `data/spikes/report.json` (every number above plus the full
+  per-class area/hue sample lists and per-run stability table), `data/spikes/contact_sheet_01.jpg`
+  through `_05.jpg` (12 frames per sheet, all 5 classes' boxes drawn and labelled with score), and three
+  ad-hoc full-resolution debug renders named above (not produced by the committed spike script; made by hand
+  in this session to diagnose the collision finding).
+- **Code**: `training/spikes/` (`postprocess.py` -- tested pure helpers; `detector.py` -- thin Grounding DINO
+  wrapper; `prompts.py` -- the candidate phrasings; `run_checkpoint1.py` -- the orchestration script, `python
+  -m training.spikes.run_checkpoint1`), `tests/unit/training/test_spikes_postprocess.py` (16 tests, pure
+  helpers only, no model). `scripts/check.py` full suite green (411 passed) after adding this code;
+  `--status` unchanged (F1-F14 all GREEN, spike code is intentionally unmarked -- not a Tier-1 feature).
+- Status: RESULT recorded; checkpoint 1 complete. Awaiting the operator's per-class bad-box counts from the
+  contact sheets before checkpoint 2 (P1.2's own packet, IMPLEMENTATION_PLAN.md Part 10) proceeds.
