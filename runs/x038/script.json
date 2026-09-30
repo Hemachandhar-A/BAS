@@ -1,0 +1,31 @@
+{
+  "run_id": "x038",
+  "experiment_id": "sample_transfer",
+  "script_type": "repeat",
+  "split": "test",
+  "fps": 29.975,
+  "camera_setup_id": "unknown",
+  "operator": "unknown",
+  "performed_steps": [
+    "red_out",
+    "red_in_tray",
+    "start_pressed",
+    "red_stowed",
+    "start_pressed"
+  ],
+  "expected_deviations": [
+    {
+      "deviation_type": "omission",
+      "step_ids": [
+        "yellow_out",
+        "yellow_in_tray"
+      ]
+    },
+    {
+      "deviation_type": "repeat",
+      "step_ids": [
+        "start_pressed"
+      ]
+    }
+  ]
+}

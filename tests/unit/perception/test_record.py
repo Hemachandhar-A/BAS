@@ -347,6 +347,28 @@ def test_validate_run_flags_duration_out_of_band(
     assert any("duration" in issue for issue in result.issues)
 
 
+def test_validate_run_min_duration_s_override_accepts_a_short_clip(
+    tmp_path: Path, experiment: ExperimentDefinition
+) -> None:
+    # Same 2s clip as the default-floor test above, but a lowered floor
+    # (perception/adopt.py uses 3.0 for the 46 adopted intake clips, the
+    # shortest of which is 4.0s) must accept it on duration alone.
+    run_dir = _write_run(tmp_path, "001-correct", experiment, fps=5.0, n_frames=10)
+    result = record.validate_run(run_dir, experiment, EXPERIMENT_PATH, min_duration_s=1.0)
+    assert not any("duration" in issue for issue in result.issues), result.issues
+
+
+def test_validate_run_min_duration_s_default_is_unchanged(
+    tmp_path: Path, experiment: ExperimentDefinition
+) -> None:
+    # Omitting min_duration_s must behave exactly as before this option existed.
+    run_dir = _write_run(tmp_path, "001-correct", experiment, fps=5.0, n_frames=10)
+    result = record.validate_run(run_dir, experiment, EXPERIMENT_PATH)
+    assert result.issues == record.validate_run(
+        run_dir, experiment, EXPERIMENT_PATH, min_duration_s=record._MIN_DURATION_S
+    ).issues
+
+
 def test_validate_run_flags_a_frozen_video(
     tmp_path: Path, experiment: ExperimentDefinition
 ) -> None:

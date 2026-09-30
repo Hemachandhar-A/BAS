@@ -734,3 +734,106 @@ forward into the zero-shot prompts when `training/prompts.yaml` is written.
 - Status: RESOLVED for this branch. `python scripts/check.py`: full suite green. `python scripts/check.py
   --status`: **F1-F14 all GREEN** (F2 has no tests, as before). Nothing in this entry is merged into
   `develop`; the PR from `p2-runtime` into `develop` is opened by the operator, by hand.
+
+## 2026-09-30 P1 R7 - kaggle CLI, dev-time only, installed outside the lockfile
+
+- **Package:** `kaggle` 2.2.4, licence Apache-2.0.
+- **Where:** installed as an isolated `uv tool` (`uv tool run kaggle ...`), **not** added to this project's
+  lockfile or any dependency group -- it is dev-time-only tooling for the P1.5 GPU training environment
+  (IMPLEMENTATION_PLAN.md 3.2), never a runtime dependency, and never present on the offline demo laptop.
+- **Auth:** a new-style Kaggle API token (`~/.kaggle/access_token`, outside the repo, never printed, read or
+  copied by this session). Authentication was verified by the user beforehand and re-checked here with one
+  read-only call, `uv tool run kaggle datasets list --mine`, which listed the account's existing datasets
+  without creating, modifying or deleting anything.
+- **Dataset creation rule (not yet done):** this project's own dataset, when created, must be a **private**
+  dataset under its own slug -- suggested `hemachandhara/sih26174-frames` -- and must not touch, modify or
+  delete any of the account's other listed datasets.
+- Status: DECIDED. Read-only auth check done; no dataset created yet.
+
+## 2026-09-30 P1 DECISION - runs/provenance.csv added; adopting the 46 intake clips
+
+- **Context:** the 46 clips in `data/intake/` (labels.csv + map.csv + working/<id>.mp4, all git-ignored; see
+  the 2026-09-30 "crew footage intake" DECISION above) needed turning into `runs/<id>/{video.mp4,script.json}`
+  the way Stage 0 (`perception/record.py`) would have produced directly, so they feed F14 stages 2+ normally.
+  Built `perception/adopt.py` (test-first: `tests/unit/perception/test_adopt.py`, a tiny generated clip + a
+  fake labels.csv/map.csv, per essential-features.md's F14 done-when).
+- **`runs/provenance.csv` (new file, tracked):** `contracts.RunScript` has no field for the crew's original
+  filename, sha256, crew label, label source or reviewer notes -- those don't belong in the derived,
+  contract-typed `script.json`. `IMPLEMENTATION_PLAN.md` Part 4 lists `runs/` as "Data crew + P1", and
+  provenance-of-a-recording is exactly that kind of joint metadata, not a P2-owned shape, so it goes in a
+  sibling CSV rather than stretching the contract. Columns: `run_id, original_name, sha256, crew_label,
+  label_source, checked_by, notes`. No `contracts.py` change proposed -- this is intake bookkeeping, not a
+  P1/P2 boundary shape.
+- **`--min-duration-s` added to `perception/record.py`'s Stage 1 validator** (default unchanged at 20.0s,
+  tested by `test_validate_run_min_duration_s_default_is_unchanged`): the 46 intake clips are real crew
+  footage from before this project's 20-150s recording convention existed, and the shortest (`x023`, an idle
+  run) is 4.0s. `--validate runs/ --min-duration-s 3` is the value used for this one adoption batch, chosen
+  to sit below the shortest real clip (4.0s) without being so low it would mask a genuinely truncated file.
+  This does not change the recorder's own default band for anything recorded going forward with
+  `--plan runs/run_plan.csv` (rows 13-77, still 20-150s).
+- **Step order verified, not assumed:** `perception.adopt.verify_step_order` asserts
+  `config/experiment.json`'s live `step_ids` equal `[red_out, red_in_tray, yellow_out, yellow_in_tray,
+  start_pressed, red_stowed, yellow_stowed]` (the order labels.csv's 1-7 codes were written against) before
+  any file is touched, and aborts the whole batch otherwise.
+- **Split:** seeded (seed 0), stratified by `script_type`, provisional -- target counts train/val/test:
+  correct 14/4/4, skip 5/2/2, swap 5/2/2, repeat 1/1/1, idle 1/1/1 (26/10/10 of the 46). A `--split-file`
+  override exists for a human-adjusted split later without touching the tool.
+- **`expected_deviations` is derived, never hand-typed:** `perception/adopt.py` calls
+  `engine.reference.derive_expected_deviations` directly (R3, the same sanctioned P1->P2 call
+  `perception/record.py`'s Stage 1 already makes) -- no reimplementation.
+- Status: DECIDED. `runs/` ownership read as "Data crew + P1" per Part 4; provenance.csv and the
+  `--min-duration-s` flag are additive, not a contract or `IMPLEMENTATION_PLAN.md` change. Open for P2's ack
+  on the `runs/provenance.csv` file existing at all, since `runs/` is jointly owned.
+
+## 2026-09-30 P1 R7 - MediaPipe hand_landmarker.task vendored in weights/
+
+- **File:** `weights/hand_landmarker.task` (the bundle essential-features.md section 3 and
+  `perception/hands.py`'s `DEFAULT_HAND_MODEL_PATH` both name), downloaded once, dev-time, from the official
+  MediaPipe Solutions download URL documented at
+  https://developers.google.com/edge/mediapipe/solutions/vision/hand_landmarker (section "Models"):
+  `https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/latest/hand_landmarker.task`.
+  **Only this one file was downloaded** -- no pose model (`pose_landmarker_lite.task`, still off by default
+  per essential-features.md section 3 point 5 and not needed by any Tier-1 rule), no auto-labeler weights,
+  nothing else.
+- **Integrity:** sha256 `fbc2a3008...` (full digest and size in `weights/MANIFEST.json`, the tracked file --
+  `.gitignore`'s `weights/*` / `!weights/MANIFEST.json` pair means the `.task` file itself stays git-ignored,
+  as `IMPLEMENTATION_PLAN.md` Part 4 specifies). Size 7,819,105 bytes (~7.46 MiB); file starts with a `PK` zip
+  header, consistent with MediaPipe's `.task` bundle format (a zip of a tflite model + metadata), not an HTML
+  error page.
+- **Licence:** Apache-2.0 (matches `IMPLEMENTATION_PLAN.md` 3.1's stack table entry for MediaPipe hands+pose;
+  cross-checked against MediaPipe's own model-card language, which states Apache-2.0 for this task bundle).
+- **`weights/MANIFEST.json` written** (did not exist before this session -- no detector yet, P1.5): currently
+  only the `hand` entry (`file`, `sha256`, `size_bytes`, `source_url`, `license`); `detector` and `pose` keys
+  are added by whoever vendors those (P1.5, and P1.6 if pose is ever enabled). No code reads this file yet
+  (`perception/hands.py`'s `weights_sha256` re-hashes the `.task` file directly, per the 2026-09-29 P1.3 review
+  note already in this file); this MANIFEST is Plan 5.8's tracked record, not a runtime dependency.
+- **Smoke test** (no tuning, no accuracy claim -- see below), ~40 real frames spread across multiple adopted
+  clips (`runs/*/video.mp4`, this session's own checkpoint-2 output): see the result entry immediately
+  following this one.
+- Status: DONE (download + MANIFEST). Smoke test result in the next entry.
+
+## 2026-09-30 P1 RESULT - hand_landmarker smoke test on 40 real frames (no tuning, no accuracy claim)
+
+- **Method:** `HandTracker` (`perception/hands.py`, default options, VIDEO mode) run over 40 frames: 5 frames
+  each, evenly spread across each clip's full duration (not just the first second), from 8 of the newly
+  adopted `runs/*/video.mp4` clips -- `x001`/`x009` (correct), `x024`/`x042` (skip), `x025`/`x030` (swap),
+  `x038` (repeat), `x023` (idle) -- so the sample isn't all one script_type. `tracker.reset()` between clips
+  (per essential-features.md section 3 point 2, timestamps restart at each run); per-frame timestamps kept
+  monotonically increasing within a clip. Wall-clock `time.perf_counter()` used only to measure latency in
+  this throwaway measurement script (not `perception/` library code -- P1 rule 8 doesn't apply to it, same as
+  `training/benchmark_cpu.py`'s own timing). Not committed to the repo (scratch script, not library code).
+- **Results:** hands found in **27/40 frames (68%)**. Handedness reported as `Right` 27 times and `Left` 2
+  times across those frames (informational only per essential-features.md section 3 point 4 -- MediaPipe
+  assumes a mirrored/selfie image and this rig's overhead, non-mirrored camera means the label should not be
+  trusted at face value; the count exceeding 27 in a few frames means both hands were found in the same
+  frame). Mean latency of the `process()` call (landmark inference; decode/IO not isolated separately): **55.0
+  ms/frame** (min 28.0, max 76.8 ms) on this dev laptop's CPU. **Caveat, disclosed rather than hidden:** this
+  includes 8 "cold" first calls (one per clip, right after each `reset()` recreates the landmarker) with no
+  warm-up exclusion, and is a single-call, no-batching measurement -- not comparable to
+  `training/benchmark_cpu.py`'s methodology (warm-up frames excluded, repeated timed passes) and must not be
+  quoted alongside those numbers or as a per-frame pipeline-fps figure.
+- **Not claimed:** accuracy (no ground-truth hand boxes/keypoints exist to score against), gloved-hand
+  behavior (none of the 8 sampled clips happen to show gloves; the robustness runs mentioned in
+  essential-features.md section 3 aren't part of this batch), or full pipeline fps (this measures the hand
+  tracker alone, not the per-frame path `training/benchmark_cpu.py` times).
+- Status: DONE, informational only. No thresholds tuned, no config changed.

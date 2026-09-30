@@ -1,0 +1,47 @@
+run_id,original_name,sha256,crew_label,label_source,checked_by,notes
+x001,x001.mp4,165a31885e83a8f9994b49db71eb91469ae56535604a8056a08829725496afb9,good,crew_label_only,,"assumed from crew label, not yet watched"
+x002,x002.mp4,9ac1f99ca165e0336d6a2f61ff509f28da380c4f42f5f11bbafd58d51f4d9190,good,crew_label_only,,"assumed from crew label, not yet watched"
+x003,x003.mp4,c143d75a6e03a11df7a38115ad1a95fc4213e8c18916cc25250ae7c8ceb2132e,good,crew_label_only,,"assumed from crew label, not yet watched"
+x004,x004.mp4,237955f564f08f53ac39cd6f2c4fef699f4e4790200512fa325eee74e499739b,good,crew_label_only,,"assumed from crew label, not yet watched"
+x005,x005.mp4,0d49e5d0d53f76b58cdb3c150d32c9ca4dbb790bbff661effc5393f44732bb2c,good,crew_label_only,,"assumed from crew label, not yet watched"
+x006,x006.mp4,f6c8d00ce559015ecd60c8b5bf0040b3ed522265017466d5538e1b1a82554ba0,good,crew_label_only,,"assumed from crew label, not yet watched"
+x007,x007.mp4,5a469d1c6e90faf11c207a9316db7cdada7f3d99a19478b227a83eddf5634519,good,crew_label_only,,"assumed from crew label, not yet watched"
+x008,x008.mp4,6ae37d47a0351178ece8885b2354c7e0c67a839083f1ba2edd69119f388dc6b7,good,crew_label_only,,"assumed from crew label, not yet watched"
+x009,x009.mp4,74d7debcdf3e2ebc2907bd70128c5a3d32b2af7a46bc47a40036357b095f5677,good,crew_label_only,,"assumed from crew label, not yet watched"
+x010,x010.mp4,bd0cbbb88fa62724775699ee9769a4d6f3c32c4285a0501f5ada8d91e4c02683,good,crew_label_only,,"assumed from crew label, not yet watched"
+x011,x011.mp4,17f844bcbe4b644ec814a3b923ecb76984343b82ada1a586a293e2bc1b99f1e8,good,crew_label_only,,"assumed from crew label, not yet watched"
+x012,x012.mp4,5de873639d4494328b075ddc56acf47b4da8bec3a0952cd9236c237ecf295aa4,good,crew_label_only,,"assumed from crew label, not yet watched"
+x013,x013.mp4,a3ff0f351da1f19c0d4515566641d3ac772b15c7065b5477128ffff110743a20,good,crew_label_only,,"assumed from crew label, not yet watched"
+x014,x014.mp4,ab4c2c0c6abed92dd64fc784352a57a0e36c65593aa8ae803250bd622963bff9,good,crew_label_only,,"assumed from crew label, not yet watched"
+x015,x015.mp4,6a4700bc6451f17e555fc23fd2f4c10e19d2a0c748c56ce892aaae525cc79b80,good,crew_label_only,,"assumed from crew label, not yet watched"
+x016,x016.mp4,a58dc01816f37e2dad0f507cea27e7bfba7e9d4d18288c0f425f9571745f60d3,good,crew_label_only,,"assumed from crew label, not yet watched"
+x017,x017.mp4,6b1582713f03daa2e222d04b5b943d0c19b04b418852a656415d3ba63df534bd,good,crew_label_only,,"assumed from crew label, not yet watched"
+x018,x018.mp4,15eaec3fdb85d556e60a2c95aac035f65654e52b67012cf6121f206fe3a7070a,good,crew_label_only,,"assumed from crew label, not yet watched"
+x019,x019.mp4,eb2b0b57a0a1bc8a2852504337f59e523a2a5a9990eb5a95bd90279dd4d67805,good,crew_label_only,,"assumed from crew label, not yet watched"
+x020,x020.mp4,9805ddda53be5eccf24d2fce758b2e2a4e175ec7b6e0abac7264a5bb42d09aa2,good,crew_label_only,,"assumed from crew label, not yet watched"
+x021,x021.mp4,88c8d456bb3325bf2abdd716813e37bd0a2018fc2e5608dca561e131cbef38f6,good,crew_label_only,,"assumed from crew label, not yet watched"
+x022,x022.mp4,52a8666816bacc5d7306d8f355b227c8f88df5ca16e22f3d3ac82e625d5fa0ee,good,crew_label_only,,"assumed from crew label, not yet watched"
+x023,x023.mp4,0c03fabf36aaf1dce758483b778ef76549aae133a6837c796d22c0db90080fd0,bad,lead_watched,P1,none
+x024,x024.mp4,45e58ffad4f3af053d97035dfba90a374e0279dffd1feceb25dd53c8fba2ec46,bad,lead_watched,P1,
+x025,x025.mp4,c1bf1f0d13834aa6361670b0953ba5cb8e5be14ecf8e8d644cf81f4a67d87196,bad,lead_watched,P1,mixed
+x026,x026.mp4,f1f9c66b7fa0f7ade6eb40b0fd08965f00bb6715fc190e337513741056cd2bf3,bad,lead_watched,P1,
+x027,x027.mp4,7852cefce817e3e8f06d5fa585ffc37abaa2fad4a1facac0be903ee9ae442c45,bad,lead_watched,P1,mixed
+x028,x028.mp4,2537d7bfdb2d9fdab4c48852189dfe4866cd0941a4b400f3d9f96ea8b1f9b8bc,bad,lead_watched,P1,
+x029,x029.mp4,d982d4c73a88b57c35ea083474a1b02df7993a1b8f7400b7f8c11f7e65d95378,bad,lead_watched,P1,
+x030,x030.mp4,751fe5983b3a50a8b6e9f4021305477a2d0d9ad3b6629baf20be4280f84bb251,bad,lead_watched,P1,mixed
+x031,x031.mp4,409c39d75f9dc3658c6b89bf2202517307af868ef79ce0320f8eabd0f61d1adc,bad,lead_watched,P1,
+x032,x032.mp4,4cdd24f405eaedcdd658f89e7a49e4fedbe4cc07e462e25a67cbd39253d646ab,bad,lead_watched,P1,
+x033,x033.mp4,e135c4c78b3a0500fdd424627beb6784a88df92c0a15ee3317c395dd05ae4f3a,bad,lead_watched,P1,
+x034,x034.mp4,d1831b8d46af80197d2925b78b55b1ab5d743276e70a26f79254ee5567220195,bad,lead_watched,P1,mixed
+x035,x035.mp4,a6e2ab46cb73b538228d82bd7d20cf27a78fb27930ca6915a47038f7a7f0c56d,bad,lead_watched,P1,none (hand roaming)
+x036,x036.mp4,594f3267f449ceac3ff0ca9cbb1533d5dff033ef0cc369afa505618d4669dc33,bad,lead_watched,P1,none (hand roaming)
+x037,x037.mp4,4093e8958d00232525387780064cfe2534ef3775f17d48591d6744345ffd5489,bad,lead_watched,P1,yellow box lifted slightly closer to the camera but not out of the outer box: not a step
+x038,x038.mp4,4fecadbfb1058ee51c80820de9d692b7d670a166b8ea8a3c9170d2b2273c1356,bad,lead_watched,P1,mixed
+x039,x039.mp4,b284896f4a07f96e2719136c5e5bcc7bdc32c6311039742550f353638346dece,bad,lead_watched,P1,
+x040,x040.mp4,1b622e2da0ce1c41fe0b3f9e3ba583baeee2f8d7c5f7b2c73b2a673f023021ab,bad,lead_watched,P1,mixed
+x041,x041.mp4,0407d4087ecea93f098ba5b1a65504e795bff72a5d5e9461d1b3a586f546bb5e,bad,lead_watched,P1,mixed
+x042,x042.mp4,1c9b7d8c2c0821be5e8e9c45340bb98759567063b4868dd5b47e37abff329f25,bad,lead_watched,P1,
+x043,x043.mp4,9609bea004a3566e88568f596bc1aaf50b0150fb37e3277ebabd1988e89abad0,bad,lead_watched,P1,mixed
+x044,x044.mp4,4e9b847d27d42442ef3639d663f77d8ae183c1d763b60ef45bce5e112d5d1e6f,bad,lead_watched,P1,
+x045,x045.mp4,bed07470778fbc8678f16370959358f3371d5feccebdf01b2cd26987c9c51243,bad,lead_watched,P1,
+x046,x046.mp4,f50ff32ba9e273012e0b8911cc9e02781e706c7c5a80081e8c79687116d7142b,bad,lead_watched,P1,

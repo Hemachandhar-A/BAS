@@ -379,7 +379,10 @@ class ValidationResult:
 
 
 def validate_run(
-    run_dir: Path, experiment: ExperimentDefinition, experiment_path: Path
+    run_dir: Path,
+    experiment: ExperimentDefinition,
+    experiment_path: Path,
+    min_duration_s: float = _MIN_DURATION_S,
 ) -> ValidationResult:
     result = ValidationResult(run_dir.name)
     script_path = run_dir / "script.json"
@@ -420,10 +423,10 @@ def validate_run(
         )
 
     duration_s = probe["duration_s"]
-    if duration_s is not None and not (_MIN_DURATION_S <= duration_s <= _MAX_DURATION_S):
+    if duration_s is not None and not (min_duration_s <= duration_s <= _MAX_DURATION_S):
         result.issues.append(
             f"duration {duration_s:.1f}s outside the "
-            f"{_MIN_DURATION_S:.0f}-{_MAX_DURATION_S:.0f}s band"
+            f"{min_duration_s:.0f}-{_MAX_DURATION_S:.0f}s band"
         )
 
     mean_luminance = probe["mean_luminance"]
@@ -487,10 +490,15 @@ def write_manifest(path: Path, results: list[ValidationResult]) -> None:
             )
 
 
-def cmd_validate(runs_root: Path, experiment_path: Path) -> int:
+def cmd_validate(
+    runs_root: Path, experiment_path: Path, min_duration_s: float = _MIN_DURATION_S
+) -> int:
     experiment = ExperimentDefinition.from_json(experiment_path)
     run_dirs = sorted(p for p in runs_root.iterdir() if p.is_dir())
-    results = [validate_run(d, experiment, experiment_path) for d in run_dirs]
+    results = [
+        validate_run(d, experiment, experiment_path, min_duration_s=min_duration_s)
+        for d in run_dirs
+    ]
     _flag_resolution_mismatches(results)
 
     exit_code = 0
@@ -525,10 +533,17 @@ def main(argv: list[str] | None = None) -> int:
         "--source", default="0", help="camera index / file / URL for --plan (default: 0)"
     )
     parser.add_argument("--experiment", type=Path, default=DEFAULT_EXPERIMENT_PATH)
+    parser.add_argument(
+        "--min-duration-s",
+        type=float,
+        default=_MIN_DURATION_S,
+        help=f"Stage 1 minimum clip duration in seconds (default: {_MIN_DURATION_S:.0f}); "
+        "used with --validate",
+    )
     args = parser.parse_args(argv)
 
     if args.validate is not None:
-        return cmd_validate(args.validate, args.experiment)
+        return cmd_validate(args.validate, args.experiment, min_duration_s=args.min_duration_s)
     return cmd_record(args.plan, args.source, args.experiment)
 
 
