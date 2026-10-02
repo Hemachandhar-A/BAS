@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>%%TITLE%%</title>
+<style>
+%%CSS%%
+</style>
+</head>
+<body>
+<header id="top">
+  <div id="tag">-</div>
+  <div id="kind"></div>
+  <div id="progress"></div>
+</header>
+<div id="strip" title="click a cell to jump to that frame"></div>
+<main>
+  <div id="stage"><canvas id="cv"></canvas><div id="imgerr" hidden></div></div>
+  <aside id="side">
+    <h2>Classes <small>(1 to N sets the class of the selected box)</small></h2>
+    <ul id="classes"></ul>
+    <h2 id="proph">Candidates</h2>
+    <div id="modehint"></div>
+    <ol id="props"></ol>
+    <div id="msg" role="status"></div>
+  </aside>
+</main>
+<footer>
+  <div id="buttons">
+    <button id="bPrev" title="Left arrow">&larr; Prev</button>
+    <button id="bNext" title="Right arrow">Next &rarr;</button>
+    <button id="bVerify" title="V">Verify (V)</button>
+    <button id="bExclude" title="X">Exclude (X)</button>
+    <button id="bUndo" title="Z">Undo (Z)</button>
+    <button id="bSave" title="S" class="primary">Download overlay (S)</button>
+    <button id="bLoad">Load previous overlay</button>
+    <button id="bClear">Clear autosave</button>
+    <button id="bHelp" title="?">Keys (?)</button>
+    <input type="file" id="fLoad" accept=".json,application/json" hidden>
+  </div>
+  <pre id="help" hidden>
+Left / Right   previous / next frame          N   next frame not yet done
+1 .. 9, 0      accept candidate n for the highlighted missing class (nothing selected)
+1 .. 5         set the class of the SELECTED box (class order = config/experiment.json); a box already there swaps
+Tab            next missing class            Click on a box = select it    Esc = deselect    B = next box
+Drag           on a selected box: move (inside) or resize (edge/corner); anywhere else: draw a box for the missing class
+Delete         delete the selected box       X  exclude the frame (again = undo the exclusion)
+V              confirm the frame as verified (needs all classes) and go to the next
+Z or Ctrl+Z    undo    S  download overlay    ?  this help
+Static check frames: edits become per-run static overrides (apply to every frame of the run); V = this run's static boxes are ok.
+  </pre>
+</footer>
+<script>window.EDITOR_DATA = %%DATA%%;</script>
+<script>
+%%CORE_JS%%
+</script>
+<script>
+%%UI_JS%%
+</script>
+</body>
+</html>
