@@ -212,6 +212,27 @@ def resolve_weights(model: str, explicit: Path | None, allow_download: bool) -> 
     return require_file(path, model)
 
 
+def _surrogate_loss(out: Any) -> Any:
+    """Mean of every floating tensor in a (nested) dict/list/tuple of network outputs."""
+    import torch
+
+    leaves: list[Any] = []
+
+    def walk(o: Any) -> None:
+        if isinstance(o, torch.Tensor):
+            if o.is_floating_point():
+                leaves.append(o.float().mean())
+        elif isinstance(o, dict):
+            for v in o.values():
+                walk(v)
+        elif isinstance(o, (list, tuple)):
+            for v in o:
+                walk(v)
+
+    walk(out)
+    return sum(leaves[1:], leaves[0])
+
+
 # --- the real model step ------------------------------------------------------------------
 
 
@@ -242,12 +263,13 @@ def build_step(
         net = YOLO(str(path)).model.to(device)
 
         def loss_of(out: Any) -> Any:
-            outs = out if isinstance(out, (list, tuple)) else [out]
-            return sum(o.float().mean() for o in outs if hasattr(o, "float"))
+            return _surrogate_loss(out)
 
     else:
         raise ValueError(f"unknown model {model!r}")
     net.train()
+    for p in net.parameters():
+        p.requires_grad_(True)  # a loaded YOLO checkpoint is frozen; its trainer unfreezes
 
     def step() -> None:
         net.zero_grad(set_to_none=True)
