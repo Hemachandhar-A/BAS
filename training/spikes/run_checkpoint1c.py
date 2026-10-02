@@ -303,21 +303,29 @@ def main() -> None:
         w = csv.writer(f)
         w.writerow(["run_id", "frame_id", "class", "v2_status", "v3_status"])
         w.writerows(changed)
-    log.info("%d (frame,class) cells changed vs v2 across %d frames",
-             len(changed), len({(c[0], c[1]) for c in changed}))
+    log.info(
+        "%d (frame,class) cells changed vs v2 across %d frames",
+        len(changed),
+        len({(c[0], c[1]) for c in changed}),
+    )
 
     # in-sample view of the Lead's 24 rows (mechanical; visual check is separate)
     insample = []
     for rw in rows:
         v2b = v2_boxes[(rw.run_id, rw.frame_id)][rw.cls]
         v3b = v3_boxes[(rw.run_id, rw.frame_id)][rw.cls]
-        insample.append({
-            "run": rw.run_id, "frame": rw.frame_id, "class": rw.cls, "reason": rw.reason,
-            "visibility": rw.visibility,
-            "v2": [round(x) for x in v2b] if v2b else None,
-            "v3": [round(x) for x in v3b] if v3b else None,
-            "iou_v2_v3": round(iou(v2b, v3b), 3) if v2b and v3b else None,
-        })
+        insample.append(
+            {
+                "run": rw.run_id,
+                "frame": rw.frame_id,
+                "class": rw.cls,
+                "reason": rw.reason,
+                "visibility": rw.visibility,
+                "v2": [round(x) for x in v2b] if v2b else None,
+                "v3": [round(x) for x in v3b] if v3b else None,
+                "iou_v2_v3": round(iou(v2b, v3b), 3) if v2b and v3b else None,
+            }
+        )
 
     # phrasing tallies (cache has both phrasings per class)
     tally = {c: Counter() for c in (*STATIC_CLASSES, *CONTAINER_CLASSES)}

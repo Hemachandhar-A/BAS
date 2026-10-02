@@ -137,3 +137,26 @@ def test_status_change_moved_box():
 
 def test_status_change_tiny_shift_is_unchanged():
     assert status_change(CARD, (481.0, 340.0, 600.0, 425.0)) is None
+
+
+# --- pick_holdout_runs -----------------------------------------------------------
+
+
+def test_pick_holdout_runs_train_only_unused_and_deterministic():
+    from training.spikes.select_v3 import pick_holdout_runs
+
+    rows = [{"run_id": f"x{i:03d}", "split": "train" if i % 2 else "val"} for i in range(1, 40)]
+    used = {"x001", "x003", "x005"}
+    a = pick_holdout_runs(rows, used, n_runs=5, seed=1)
+    assert a == pick_holdout_runs(rows, used, n_runs=5, seed=1)
+    assert len(a) == 5 and a == sorted(a)
+    by_id = {r["run_id"]: r for r in rows}
+    assert all(by_id[r]["split"] == "train" and r not in used for r in a)
+
+
+def test_pick_holdout_runs_not_enough_runs_fails():
+    from training.spikes.select_v3 import pick_holdout_runs
+
+    rows = [{"run_id": "x001", "split": "train"}, {"run_id": "x002", "split": "test"}]
+    with pytest.raises(ValueError):
+        pick_holdout_runs(rows, set(), n_runs=2, seed=1)

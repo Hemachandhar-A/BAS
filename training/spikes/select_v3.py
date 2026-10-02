@@ -103,3 +103,20 @@ def status_change(v2_box: Box | None, v3_box: Box | None) -> tuple[str, str] | N
     if iou(v2_box, v3_box) >= SAME_BOX_IOU:
         return None
     return "ok", "ok_moved"
+
+
+def pick_holdout_runs(
+    manifest_rows: list[dict], used_run_ids: set[str], n_runs: int, seed: int
+) -> list[str]:
+    """Seeded sample of ``n_runs`` TRAIN runs not in ``used_run_ids``
+    (never a val or test run). Sorted, so the plan is stable."""
+    import random
+
+    pool = sorted(
+        r["run_id"]
+        for r in manifest_rows
+        if r["split"] == "train" and r["run_id"] not in used_run_ids
+    )
+    if len(pool) < n_runs:
+        raise ValueError(f"only {len(pool)} unused train runs, need {n_runs}")
+    return sorted(random.Random(seed).sample(pool, k=n_runs))
