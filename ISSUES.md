@@ -1240,3 +1240,14 @@ No variant is ACCEPTABLE, so no rule is recommended as passing. The numbers say 
 Val and test were not opened, so nothing here is validated; one performer, one setup, one camera position, no gloves; 26 clips, 14 of them "correct" (one clip is 7 points against a threshold of 12 of 14); true press moments are not labeled; MediaPipe used its default 0.5 confidences; converting the hold in seconds to frames at the real frame rate is a P2.6 decision (here only ceil() at 4 and 8 fps); the hold replaces hysteresis only, release and baseline were not tuned; V2's landmark set and the margins were fixed before the run, not searched.
 
 Code: `training/spikes/touch_variants.py` (pure helpers, tested), `run_cp3.py` (orchestration: plan, card cache, cards, hands, analyze, report). Tests: `tests/unit/training/test_spikes_touch_variants.py` (22). Artifacts (git-ignored): `data/spikes/cp3/` (`plan.json`, `cards.json`, `results.json`, `diagnostics.md`, `hands_timing.json`, per run `raw.jsonl`, `hands_4.jsonl`, `hands_8.jsonl`, logs). Stop here: the Lead decides the variant; a separate P2 session implements it.
+
+
+## 2026-10-02 P2 DECISION - hand_touching uses fingertips only
+
+**What.** `state/tracker.py` evaluates `hand_touching(label)` as true iff at least one fingertip landmark (module constant `FINGERTIP_LANDMARKS = (4, 8, 12, 16, 20)`, MediaPipe indices) of any hand lies inside the best floor-filtered detection of the label grown by `touch_margin_frac` on each side (box test inclusive, as before). Before: any of the 21 landmarks. Unchanged: the `HandTouchingRule(label)` type, the `PerceptionConfig` fields, `config/experiment.json`, margin 0.10, the touching hand's score in the step confidence, `hysteresis_frames` (default 5). New tests: `tests/unit/state/test_tracker_fingertips.py` (marker F4).
+
+**Accepted limitation.** On the train clips the best fingertip variant (any fingertip, margin 0.10, hold 0.75 s at 8 fps) gives exactly one START press in 9 of 14 correct clips with 0 extras; the 80% acceptance bar was NOT met; the Lead accepted this as a documented limitation. One performer, one setup, no gloves; val and test not looked at (evidence: the P1.2 addendum and DECISION entries).
+
+**P2.6 knobs.** The hold (`hysteresis_frames`; the measured hold was 0.75 s, i.e. 6 frames at 8 fps, the default stays 5 until then) and `touch_margin_frac`, tuned and checked on val only.
+
+**See also.** The CONTRACT entry "2026-10-02 P2 CONTRACT - hand_touching uses fingertips only (Lead decision D74)" on branch `contract/touch-fingertips` (contracts.py comment and essential-features.md F4 text); that PR must be merged first.
