@@ -127,11 +127,11 @@ TTS              : a separate process (F7)
 **Implementation** (a pure function in `state/tracker.py`)
 1. Take the **best** (highest-confidence, ties first-in-list) detection of `label`; if none, the rule is false.
 2. **Grow the box** by `touch_margin_frac` × its width on left/right and × its height on top/bottom.
-3. The rule is **true when any of the 21 landmarks of any hand lies inside the grown box.** For the step's confidence, include the touching hand's `score` (with the detection `conf`).
+3. The rule is **true when at least one fingertip landmark (MediaPipe indices 4, 8, 12, 16, 20) of any hand lies inside the grown box.** Wrist, palm and the other landmarks do not count. For the step's confidence, include the touching hand's `score` (with the detection `conf`).
 4. Not a learned model: no interaction classifier.
 
 **Parameters:** `touch_margin_frac = 0.10` (a disclosed default, tuned in P2.6).
-**Pitfalls:** with an **overhead** camera a hand passing *above* an object overlaps it in 2-D without touching. The defenses are hysteresis (a real touch is held) and a physical layout that keeps START away from the boxes' path; the `idle-b` runs (hands wandering) measure the false-positive rate.
+**Pitfalls:** with an **overhead** camera a hand passing *above* an object overlaps it in 2-D without touching. The defenses are the fingertip-only rule (an arm or palm crossing no longer counts, but the fingertip must be visible near the object), hysteresis (a real touch is held) and a physical layout that keeps START away from the boxes' path; measured limitation: on the train clips the best fingertip variant recognised the START press in 9 of 14 correct clips with 0 extras (ISSUES.md, 2026-10-02 P2 CONTRACT); the `idle-b` runs (hands wandering) measure the false-positive rate.
 **Done when:** [Plan §7.4, F4]. **Why a heuristic:** [context.md §6](./context.md#6-perception-model-choices).
 
 ---
