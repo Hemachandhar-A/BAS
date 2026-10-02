@@ -1103,3 +1103,83 @@ fast-forwarded to `origin/develop` (`f327ba2`) and pushed, no force needed.
 - **Occlusion.** The rule used here is "hidden-and-missing is not bad". The plan has no occlusion labeling policy yet; to be decided at checkpoint 3.
 - **NOT tested:** gloves, other performers, other lighting, val/test runs (train runs only), anything on a different camera setup than the 17 train runs seen.
 - Code: `training/spikes/review_csv.py`, `select_v3.py` (tested), `run_checkpoint1c.py`, `run_holdout.py` (orchestration, untested like 1b). Artifacts (git-ignored): `data/spikes/v3/`, `data/spikes/holdout/`. Status: checkpoint 1c complete; stopping before checkpoint 2.
+
+## 2026-10-02 P1.2 DECISION - zero-shot auto-labeler (Grounding DINO tiny) and prop setup
+
+Scope: S-C checkpoints 2 and 3, train runs only, frozen v3 rules unchanged (`data/spikes/v3/frozen_params.json`), `HF_HUB_OFFLINE=1`. Everything below is a feasibility check on 5 clips plus the Lead's reviews of 80 frames. It is not an accuracy claim. **Gloves were not tested.** No file in `contracts.py`, `config/experiment.json`, `state/`, `engine/`, `perception/` was edited. **No `config/experiment.json` change is proposed.**
+
+### 1. Auto-labeler verdict
+- **Grounding DINO tiny (Apache-2.0, `IDEA-Research/grounding-dino-tiny`) is usable as the Stage 4 first-pass labeler for this rig, with a human review of every frame class it is weak on (below).** It is not usable unreviewed: the three static classes had 0 bad frames on the reviewed frames (in-sample 60, hold-out 20), the two movable containers did not (1/60 and 3/60 in-sample, 1/20 and 2/20 hold-out, see section 3).
+- Speed on this CPU: 3.72 s/call (600 calls, checkpoint 1b), 4.13 s/call (100 calls, hold-out), 4.05 s/call mean and 3.96 s median (773 calls, checkpoint 2, `shortest_edge=480`). About 3.7 to 4.1 s per call, one phrase per call.
+- **YOLO-World was NOT tried** (not in the lockfile, no licence check done, never run). This entry therefore does not compare the two; it only says Grounding DINO tiny is good enough to continue with, and leaves YOLO-World as an untested alternative.
+- Accuracy numbers are in section 3 (from the Lead's three CSVs). They are counts on 60 in-sample frames and 20 hold-out frames.
+
+### 2. Checkpoint 2: the stack on 5 train clips (frozen v3 + hands -> StateTracker -> SequenceEngine)
+Runs (train; none among x006 x007 x010 x020 x023 x027 x029 x030 x031 x034 x039 x044, none among the hold-out x003 x004 x008 x021 x033; the shortest unused clips of each type, to keep the ~4 s/call model pass short): **correct x011, x019, x001; skip x037; swap x043** (the only unused train skip; x043 chosen over x026 as the shorter swap). Frames at ~4 fps (frame ids on a 4 fps grid of the 30 fps clip, `t = frame_id / fps`): x011 75, x019 80, x001 86, x037 48, x043 60 = 349 frames. Static classes (outer_box, tray, start_button) by the v3 consensus on 5 frames spread across each clip, the consensus box and the median agreeing score applied to every frame; containers per frame, one phrasing each ("a red container.", "a lime green container."), 698 container calls + 75 static calls = 773 calls, 52.1 min. Config: `PerceptionConfig()` and `RuntimeConfig()` defaults (hysteresis 5, release 5, baseline 10 frames, floor 0.30, confirm 0.60, touch margin 0.10). Hands: `perception/hands.py` `HandTracker`, fresh landmarker per clip. **Hands-only: 38.8 fps overall (36.7 to 42.4 per clip), about 26 ms per frame, measured with the detector idle** (an earlier partial run measured 21 fps while the model was running on the same CPU).
+
+| clip | expected deviations | produced | result |
+|---|---|---|---|
+| x019 correct | none | none; 7 steps in order, last at 18.51 s | matches |
+| x011 correct | none | omission [yellow_out, yellow_in_tray]@6.24, out_of_order yellow_out@6.74, out_of_order yellow_in_tray@7.01, repeat start_pressed@15.01, omission [red_stowed]@18.01 | 5 spurious; red_stowed never fires |
+| x001 correct | none | repeat start_pressed@16.50 (run completes at 20.00) | 1 spurious |
+| x037 skip | omission [red_out, red_in_tray, yellow_out, yellow_in_tray] | omission [red_out, red_in_tray, yellow_out, yellow_in_tray, start_pressed, red_stowed]@6.74, run completed | type right, ids wrong |
+| x043 swap | omission [red_out, red_in_tray]; out_of_order red_out; out_of_order red_in_tray; omission [start_pressed, red_stowed] | omission [red_out, red_in_tray, yellow_out, yellow_in_tray]@6.27; out_of_order red_out@6.50; out_of_order red_in_tray@6.50; omission [red_stowed]@9.50, run completed | 4 of 4 deviation types right, 2 of 4 id sets exact |
+
+Fired steps, in order, with time in s (`?` = tagged `flagged_uncertain`, confidence < 0.60):
+- x011: red_out 4.00?, red_in_tray 4.00?, start_pressed 6.24, yellow_out 6.74?, yellow_in_tray 7.01?, start_pressed 15.01, yellow_stowed 18.01?. Performed: the canonical 7. red_stowed never fires.
+- x019: red_out 4.24?, red_in_tray 4.24?, yellow_out 8.24?, yellow_in_tray 8.24?, start_pressed 10.74, red_stowed 17.51?, yellow_stowed 18.51?. Performed: the canonical 7. Exact match.
+- x001: red_out 3.50?, red_in_tray 3.50?, yellow_out 7.23?, yellow_in_tray 7.23?, start_pressed 7.23, red_stowed 16.00?, start_pressed 16.50, yellow_stowed 20.00?. Performed: the canonical 7.
+- x037: yellow_stowed 6.74?, red_stowed 7.00? (the second is after run_completed and ignored). Performed: start_pressed only. start_pressed never fires.
+- x043: start_pressed 6.27, red_out 6.50?, red_in_tray 6.50?, yellow_stowed 9.50? (run_completed), then red_out 9.73?, red_in_tray 9.73?, start_pressed 11.50, red_stowed 12.73? (all ignored by the engine after completion). Performed: yellow_out, yellow_in_tray, red_out, red_in_tray, yellow_stowed, red_stowed. yellow_out and yellow_in_tray never fire.
+
+**Causes, from the per-frame data (`data/spikes/cp2/<run>/report.json`, `tables.md`) and the frames I looked at (hand landmarks and boxes drawn on x011, x001, x037, x043, x019). None was fixed; no threshold, rule or P2 code was touched.**
+
+A. **START touch is not "fingertip on the card".** The rule (contracts.py section 3, implemented in `state/tracker.py`) is true when ANY of the 21 landmarks is in the card box grown 10 percent. Over the 5 clips the rule was true in 93 frames; the index fingertip (landmark 8) was in the grown card box in 9 of them, all in x019, the one clip whose real press is made with the hand mostly inside the frame. Of the 7 `start_pressed` events emitted, 1 (x019@10.74) is a real press; 6 are an arm or palm crossing the card (x011@6.24 and @15.01 while carrying a container, x001@7.23 and @16.50, x043@6.27 and @11.50). The real press in x001 (finger on the card at the frame's bottom edge, about 9.7 to 11.5 s) produced **no hand at all** in 14 consecutive frames (`n_hands` = 0), so it never fires. The real press in x011 (about 10 to 11.5 s) had a hand in 4 of the 9 frames between 9.5 and 11.5 s, never 5 in a row, and landmark 8 was off the visible fingertip in the frame I looked at (t = 10.01). In x037 the arm crossed the card from 2.0 to 5.2 s; the 10-frame baseline ends at 2.25 s, so START was latched at 2.0 s and stayed true until 5.24 s; it re-armed at 6.5 s and was then true for only 1 frame (7.5 s), so no event.
+B. **Frame counts are tuned for a higher rate than 4 fps.** The defaults count frames: baseline 10 frames is 2.5 s at 4 fps (about 0.67 s at 15 fps), hysteresis 5 is 1.25 s, release 5 is 1.25 s. x043: the performer moved the yellow container before 2.25 s, so yellow_out and yellow_in_tray were already true in the baseline and were latched (never fire). Real transitions of 1 to 4 frames cannot reach hysteresis (e.g. x011 red_stowed true for 2 frames at 12.74). `RuntimeConfig.target_fps` is 15; the 4 fps here is the detector's own rate. Not tuned.
+C. **Missing and low-score containers.** Missing container frames over the 5 clips (all reasons `out_of_band`: held and rotated above the 0.0694 ceiling, hand-merged or motion-blurred): red_box 40 and yellow_box 41 of 349 frames each (81 of 698 container-frames; not Lead-reviewed, includes hidden objects). Frames with a detection below the 0.30 floor (ignored by the tracker): red_box 41, yellow_box 3 (red_box scores 0.20 to 0.29 when it sits in the outer box in x011, which is why x011 red_stowed never fires). What the tracker does with a missing label: every rule on that label is false (inside and outside both need the label), so the hysteresis counter resets, and a fired or latched step gets a false frame; 5 missing frames re-arm it. That is how x037 fires yellow_stowed and red_stowed spuriously: the arm covers the red container for 11 frames (2.74 to 5.24 s) and the lime one for 15 (1.73 to 5.24 s), both stow steps re-arm, then both go true again.
+D. **Stow steps (start true, latched), as the 2026-09-28 entry predicts:** red_stowed true in 3, 4, 8, 8, 9 of the first 10 frames and yellow_stowed true in 10, 10, 10, 2, 6 (x011, x019, x001, x037, x043) so all 10 were latched in the baseline; each re-arms after 5 false frames (red_stowed at 2.0, 2.23, 3.0, 3.24, 6.5 s; yellow_stowed at 6.51, 7.0, 7.23, 2.74, 2.73 s) and then fires when the container is put back (x019 17.51 and 18.51, x001 16.00 and 20.00, x043 12.73 and 9.50). They fire in the right order in x019 and x001. They fail when the container score is under the floor (x011 red) or the container is missing (x037 spurious).
+- A contract-level change is **not** shown to be needed by these 5 clips. The fixes the data point at are on the P2 side (the touch rule and the frame-count config, tuned on val at P2.6 at the real rate) and on the detector side. They are listed for the Lead and P2 as observations, not as edits: touch rule true only for the fingertip or for several consecutive frames with a hand present; frame counts expressed in seconds; a hand cut off at the frame edge.
+- Prop observation (untested proposal): the card sits at the frame's bottom edge, so a real press leaves only a fingertip in frame (x001). Moving the card up by about one hand length is a setup change that would need a re-recording to test.
+
+### 3. Per-class bad counts (Lead's CSVs; bad = wrong_box / wrong_class / duplicate / missing-but-visible-or-partial; hidden-and-missing not counted)
+v3 on the 60 frames the thresholds came from (**in-sample**): verdict from `changed_review.csv` for every cell it lists, else from the v2 `bad_boxes.csv`.
+
+| class | bad / 60 | fraction | 95% Wilson interval |
+|---|---|---|---|
+| outer_box | 0 | 0.0% | 0 to 6.0% |
+| tray | 0 | 0.0% | 0 to 6.0% |
+| start_button | 0 | 0.0% | 0 to 6.0% |
+| red_box | 1 (x027#266, rotated, 0.0735 above the ceiling) | 1.7% | 0.3 to 8.9% |
+| yellow_box | 3 (x034#77 box stretched over the hand; x034#156 and x044#165 blurred and moving, 0.0725 above the ceiling) | 5.0% | 1.7 to 13.7% |
+
+Hidden-and-missing, not counted: start_button x006#334, x010#474, x030#472, x034#77, x034#156, x044#165 (6). v2 for comparison: start_button 10, red_box 10, yellow_box 1, outer_box 0, tray 0 of 60 (16.7, 16.7, 1.7%).
+
+Hold-out (fresh train runs x003 x004 x008 x021 x033, 20 frames): outer_box 0/20, tray 0/20, start_button 0/20, **red_box 1/20 (5.0%, x008#572 held at the left edge under the hand, only an outer-box-sized candidate)**, **yellow_box 2/20 (10.0%, x003#324 candidate 0.135 merged the hand and was rejected; x003#416 candidate 0.0277 below the 0.0324 floor)**. Intervals are wide at n = 20 (red 0.9 to 23.6%, yellow 2.8 to 30.1%; 0 of 20 is 0 to 16.1%). **One data note for the Lead:** the hold-out CSV row says `x004,416,yellow_box`; x004's sampled frames are 93, 222, 345, 506, and the 0.0277-area candidate the note describes is in x003#416 (its cache row). I counted it as x003#416 and did not edit the CSV; `load_bad_boxes` rejects the row as written.
+
+### 4. Props
+Keep: grey hardcover book as tray, white handwritten START card, lime container, red container. No prop change is supported by the data: the card passes the white-paper test (below) and was found in all 22 runs checked (12 + 5 + 5, v3 white test passed in each), tray and outer_box had 0 bad frames, and the remaining errors come from hands, motion and rotation, not from colour. The only prop-related proposal is the card position noted in section 2 (untested).
+
+### 5. Recommended `training/prompts.yaml` wording (one phrasing per class; tally from the 60-frame v3 result, phrase of the best-scoring candidate agreeing with the final box)
+- outer_box: "a brown cardboard box." (60/60; "a cardboard box." never won)
+- tray: "a grey book." (51/60; "a tray." won 9/60)
+- start_button: "a white index card." (54/54 frames with a box; "a start button." never won)
+- red_box: "a red container." (59/59 frames with a box; "a red box." never won)
+- yellow_box: "a lime green container." (58/58 frames with a box; "a yellow box." never won)
+Prompts are lowercase and end with a period. One phrase per call (a multi-class query blends text spans, see the checkpoint 1 entry). Not tried: any other wording.
+
+### 6. Recommended bands and the START white-paper test (from the Lead-reviewed 60 frames; thresholds already frozen, not re-derived)
+- Container area band **[0.0324, 0.0694]** of frame area, from n = 21 pooled clean container areas (red 11, lime 10): min 0.0381, median 0.0458, p90 0.0555, max 0.0867; lower = 0.85 x min, upper = 1.25 x p90. Costs seen: 3 true containers above the ceiling (0.0725, 0.0735, and 0.0743 in x011#75, a held rotated red container) and 1 partly hidden container below the floor (0.0277). Static bands unchanged: outer_box [0.182, 0.328], tray [0.019, 0.188], start_button [0.001, 0.108].
+- START card white-paper test, centre 50 percent of the box, OpenCV scale: **saturation <= 61 and value >= 128**. Card n = 47 frames: saturation median 22.9, p95 43.3, max 75.2; value min 142.6. Lowest container saturation n = 21: 77.8. The consensus passed the test in 22 of 22 runs (12 in checkpoint 1c, 5 hold-out, 5 here). Small samples, one performer, one setup.
+
+### 7. Proposals for the Stage 4 labeler (PROPOSALS; each needs a NEW fresh sample before it is trusted, none is tested)
+1. Container ceiling near **twice the clean median container area** (about 0.092 from the 0.0458 median) instead of 1.25 x p90, so rotated and held containers (0.0725 to 0.0743) survive; the wrong or merged boxes seen are 0.102 to 0.135. It would not reject x034#77's stretched lime box (0.0867), which is what proposal 3 is for.
+2. A **colour-verified smaller floor**: accept a candidate below 0.0324 (e.g. 0.0277) only if its central-50-percent hue and saturation match the class colour (red hue 2.2 to 9.3, lime hue 10.4 to 35.1 from the checkpoint 1b sample, n = 11 and 10).
+3. A **rule against boxes stretched over a hand**: reject or flag a candidate that is much wider than the container and overlaps the hand landmarks (x034#77 was 2.7 times the container width).
+
+### 8. Occlusion labeling policy (PROPOSAL for the plan)
+Hidden object: no box. Partly hidden: a box on the visible part only (the reviewed partial cases above are all of this kind). Review counts "missing but visible or partial" as bad and "missing and hidden" as not bad, which is the same rule.
+
+### 9. NOT tested
+Gloves (no glove clips); other performers; other lighting; other camera positions or any camera move; val and test runs (never opened); swap, idle and repeat clips in the hold-out (it had 4 correct runs and 1 skip); a second performer or setup (one performer, one setup throughout); YOLO-World.
+
+Code: `training/spikes/cp2.py` (pure helpers, tested), `bad_counts.py` (tested), `run_cp2.py` (orchestration: plan, cache, assemble, tables). Tests: `tests/unit/training/test_spikes_cp2.py`, `test_spikes_bad_counts.py`. Artifacts (git-ignored): `data/spikes/cp2/` (`raw.jsonl` and `perception.jsonl` per run, `report.json`, `tables.md`, `summary.json`, `cache.log`). Status: checkpoints 2 and 3 complete; the Lead's call on section 2 (touch rule and frame-count config are P2's, a re-recording question for the card position) is open.
