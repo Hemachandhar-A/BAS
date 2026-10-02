@@ -545,6 +545,13 @@ def cmd_edit(split: str, gold: int | None, static: bool, only_sample: bool) -> N
     for cls, counts in info["proposals_per_missing_class"].items():
         if counts:
             print(f"  {cls}: {len(counts)} missing, proposals per cell {counts}")
+    cov = info["coverage"]
+    if cov["missing_cells"]:
+        print(
+            f"  missing cells {cov['missing_cells']}: with any cached candidate "
+            f"{cov['cells_with_any_candidate']}, with a container-sized non-static candidate "
+            f"{cov['cells_with_plausible_candidate']} (a proxy; only looking tells)"
+        )
     print(
         "open it from file:// in Chrome or Edge; download the overlay to "
         f"data/corrections/{split}.json"

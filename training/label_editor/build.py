@@ -255,6 +255,7 @@ def build_frames(
             frames.append(entry("static", run, fid, lab, only_classes=STATIC_CLASSES))
     info = {
         "split": split,
+        "coverage": coverage_stats(frames),
         "n_excluded": sum(1 for f in frames if f["kind"] == "excluded"),
         "gold_frames": n_gold,
         "n_static": sum(1 for f in frames if f["kind"] == "static"),
@@ -270,6 +271,54 @@ def build_frames(
         },
     }
     return frames, info
+
+
+PLAUSIBLE_AREA = (0.015, 0.11)  # v4's colour-verified floor and CEILING_HARD_MAX
+PLAUSIBLE_MAX_STATIC_IOU = 0.5
+
+
+def coverage_stats(frames: list[dict]) -> dict:
+    """For every missing cell of the labeler-EXCLUDED frames: does the cache hold any
+    candidate, and one of container size (area within ``PLAUSIBLE_AREA`` of the frame) that
+    is not one of the frame's static objects (IoU <= 0.5 with each)? A PROXY: it says a
+    candidate could be a container, not that it is the right one; only looking tells."""
+    from training.spikes.postprocess import iou
+
+    cells = []
+    for f in frames:
+        if f["kind"] != "excluded":
+            continue
+        statics = [tuple(b) for c, b in f["auto_boxes"].items() if c in STATIC_CLASSES]
+        for cls, props in f["proposals"].items():
+            ok = [
+                p["n"]
+                for p in props
+                if PLAUSIBLE_AREA[0] <= p["area_frac"] <= PLAUSIBLE_AREA[1]
+                and all(iou(tuple(p["box"]), s) <= PLAUSIBLE_MAX_STATIC_IOU for s in statics)
+            ]
+            cells.append(
+                {
+                    "run": f["run"],
+                    "frame": f["frame"],
+                    "class": cls,
+                    "candidates": len(props),
+                    "plausible_numbers": ok,
+                }
+            )
+    per_class: dict[str, dict] = {}
+    for c in cells:
+        pc = per_class.setdefault(c["class"], {"cells": 0, "any": 0, "plausible": 0})
+        pc["cells"] += 1
+        pc["any"] += bool(c["candidates"])
+        pc["plausible"] += bool(c["plausible_numbers"])
+    return {
+        "missing_cells": len(cells),
+        "cells_with_any_candidate": sum(1 for c in cells if c["candidates"]),
+        "cells_with_plausible_candidate": sum(1 for c in cells if c["plausible_numbers"]),
+        "plausible_area_range": list(PLAUSIBLE_AREA),
+        "per_class": per_class,
+        "cells": cells,
+    }
 
 
 # --- the page ------------------------------------------------------------------------------

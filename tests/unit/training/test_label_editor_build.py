@@ -337,3 +337,29 @@ def test_static_check_uses_a_frame_whose_movable_calls_are_pending_if_its_static
     labels["b"]["0"] = {"status": "pending", "boxes": {}, "missing": [], "reason": ""}
     frames, _ = _frames(static=True, labels=labels)
     assert [(f["run"], f["frame"]) for f in frames if f["kind"] == "static"] == [("a", 0)]
+
+
+# --- candidate coverage (a proxy, not correctness) ---
+
+
+def test_coverage_counts_cells_with_a_container_sized_non_static_candidate():
+    from training.label_editor.build import coverage_stats
+
+    frames, _ = _frames()
+    # a#15: one tiny candidate (0.0023 of the frame: not container sized) -> any, not plausible
+    # b#15: the whole outer box (0.38, too big) and a 80x60 box (0.015) near nothing static
+    cov = coverage_stats(frames)
+    assert cov["missing_cells"] == 2
+    assert cov["cells_with_any_candidate"] == 2
+    assert cov["cells_with_plausible_candidate"] == 1
+    assert cov["per_class"]["red_box"] == {"cells": 2, "any": 2, "plausible": 1}
+    cells = {(c["run"], c["frame"], c["class"]): c for c in cov["cells"]}
+    assert cells[("b", 15, "red_box")]["plausible_numbers"] == [2]
+    assert cells[("a", 15, "red_box")]["plausible_numbers"] == []
+
+
+def test_coverage_ignores_static_check_and_gold_frames():
+    from training.label_editor.build import coverage_stats
+
+    frames, _ = _frames(static=True)
+    assert coverage_stats(frames)["missing_cells"] == 2

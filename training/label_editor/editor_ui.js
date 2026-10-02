@@ -28,7 +28,9 @@
   /* --- autosave -------------------------------------------------------------------- */
   function save() {
     try {
-      localStorage.setItem(STORE_KEY, JSON.stringify({ states: states, foreign: foreign, at: Date.now() }));
+      var touched = {};   // untouched frames are not stored: a regenerated page brings its own auto boxes
+      Object.keys(states).forEach(function (k) { if (states[k].touched) touched[k] = states[k]; });
+      localStorage.setItem(STORE_KEY, JSON.stringify({ states: touched, foreign: foreign, at: Date.now() }));
     } catch (e) { /* private window or blocked storage: the download still works */ }
   }
   function restore() {
@@ -37,7 +39,7 @@
       if (!raw) return 0;
       var s = JSON.parse(raw), n = 0, keys = {};
       D.frames.forEach(function (f) { keys[f.key] = true; });
-      Object.keys(s.states || {}).forEach(function (k) { if (keys[k]) { states[k] = s.states[k]; n++; } });
+      Object.keys(s.states || {}).forEach(function (k) { if (keys[k] && s.states[k].touched) { states[k] = s.states[k]; n++; } });
       foreign = s.foreign || foreign;
       return n;
     } catch (e) { return 0; }
