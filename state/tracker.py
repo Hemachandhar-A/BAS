@@ -17,7 +17,8 @@ Per-frame algorithm (IMPLEMENTATION_PLAN.md 5.3):
    frames emits one ``StateEvent`` and disarms.
 4. ``confidence`` is the minimum, over the hysteresis window, of the
    confidences of the best detections the step's rules reference (plus the
-   touching hand's score for ``hand_touching``); ``uncertain = confidence <
+   touching hand's score for ``hand_touching``, which is true only when a
+   fingertip landmark is inside the grown box); ``uncertain = confidence <
    confirm_conf``.
 5. Same-frame ties emit in canonical experiment order (the order steps
    appear in ``ExperimentDefinition.steps``).
@@ -44,6 +45,11 @@ from contracts import (
 )
 
 Box = tuple[float, float, float, float]
+
+# MediaPipe hand-landmark indices of the five fingertips (thumb, index, middle,
+# ring, pinky). Only these count for ``hand_touching`` (ISSUES.md, 2026-10-02 P2
+# DECISION): a wrist or palm over an object is not a touch.
+FINGERTIP_LANDMARKS = (4, 8, 12, 16, 20)
 
 
 def _floor_filter(detections: list[Detection], floor: float) -> list[Detection]:
@@ -110,8 +116,8 @@ def _evaluate_rule(
             return False, []
         grown = _grow_box(label_d.box, config.touch_margin_frac)
         for hand in hands:
-            for lm in hand.landmarks_px:
-                if _point_in_box(lm, grown):
+            for i in FINGERTIP_LANDMARKS:
+                if _point_in_box(hand.landmarks_px[i], grown):
                     return True, [label_d.conf, hand.score]
         return False, []
 
