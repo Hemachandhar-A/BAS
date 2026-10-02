@@ -973,3 +973,120 @@ fast-forwarded to `origin/develop` (`f327ba2`) and pushed, no force needed.
   F1 11, F2 no tests (pre-existing, unaffected), F3 22, F4 22, F5 31, F6 10, **F7 22/22 (was 21/22)**, F8 3,
   F9 16, F10 32, F11 7, F12 23, F13 25, F14 78 -- every count matches or exceeds its pre-fix value, all GREEN.
 - Status: DONE. F7 is now the full 22/22.
+
+## 2026-10-02 P1.2 checkpoint 1b - candidate cache, v2 selection, proxy metrics
+
+- **Supersedes checkpoint 1's closing line.** "Awaiting the operator's per-class bad-box counts from the
+  contact sheets" (2026-09-30 entry) is superseded: the v1 contact sheets (`data/spikes/contact_sheet_01..05.jpg`)
+  must **not** be counted. This session re-ran the whole spike with a wider candidate net and a re-derived
+  selection rule; `data/spikes/v2/bad_boxes.csv` (header only: `run_id,frame_id,class,reason`) is the per-class
+  review artifact going forward, against `data/spikes/v2/contact_sheet_v2_01..05.jpg`.
+- **Raw candidate cache** (`training/spikes/run_raw_cache.py`, no tests -- model + I/O, like
+  `run_checkpoint1.py`): identical 12 train runs x 5 frames x 10 phrasings as checkpoint 1 (seed 0, frame list
+  reused via `run_checkpoint1._select_runs` / `_sample_frame_indices` rather than re-derived -- confirmed these
+  reproduce the exact `run_ids` checkpoint 1's `report.json` recorded). Checkpoint 1's own `report.json` only
+  kept the post-hoc v1 winner, not the full candidate set, so it could not be reused for re-selection -- hence a
+  fresh model pass. `box_threshold=0.20`, `text_threshold=0.20` (both lower than checkpoint 1's 0.25/0.20, to
+  surface the smaller correct candidates checkpoint 1's own threshold had already screened out), `score_floor
+  =0.20`, same resize as checkpoint 1 (`shortest_edge=480, longest_edge=800`), `HF_HUB_OFFLINE=1` set for the
+  whole run. Up to 10 candidates kept per (run, frame, phrasing) call, written to
+  `data/spikes/v2/raw_candidates.jsonl` (600 lines, one per call), resumable by skipping already-written
+  (run,frame,phrase) keys (did not actually crash this session, but verified the skip logic against the
+  partial file while the run was still in progress). **600 calls, mean 3.72s/call, median 3.70s/call, total
+  37.2 min** -- in line with checkpoint 1's own ~4.08s/call.
+- **Area bands, derived from report.json AND the raw cache, not assumed** (`training/spikes/run_checkpoint1b.py
+  pick_area_band`): for each class, took every candidate box across all 600 calls belonging to that class,
+  sorted their area fractions, and split them into clusters wherever a consecutive gap >= 3% of frame area
+  opened up. **A first version of this (biggest-gap-only, no anchor) picked the WRONG cluster for `outer_box`**
+  -- it assumed "the small cluster is always the real object" (true for the two containers: small = real
+  container, large = the whole-cardboard-box collision) but that is backwards for `outer_box` itself, where the
+  real object IS the large cluster. That version returned a band of (7.2%, 17.4%) for `outer_box`, entirely
+  below its true size, and `outer_box` came back "missing" in 35/60 frames. **Fixed by anchoring each class's
+  cluster choice on the minimum value already in checkpoint 1's own `report.json` `area_frac_samples` for that
+  class** -- verified first that this minimum always falls inside the TRUE cluster for all 5 classes (outer_box
+  0.2274, tray 0.1432, red_box 0.0437, yellow_box 0.0460, start_button 0.0193 -- all inside their class's
+  correct range, confirmed against checkpoint 1's own qualitative findings before trusting this). Final bands
+  (lo/hi, with the raw-cache cluster each came from):
+  - `outer_box`: **[0.182, 0.328]** (cluster 0.227-0.273, 120/155 raw candidates -- matches checkpoint 1's own
+    measured range almost exactly, as expected since checkpoint 1 found `outer_box` reliable).
+  - `tray`: **[0.019, 0.188]** (cluster 0.024-0.157, 218/327).
+  - `start_button`: **[0.001, 0.108]** (cluster 0.001-0.090, 217/328) -- cleanly excludes the 4 frames where
+    checkpoint 1's own data shows `start_button` landing on the tray/book instead (area frac 0.143-0.194).
+  - `red_box`: **[0.031, 0.188]** (cluster 0.039-0.157, 162/275).
+  - `yellow_box`: **[0.023, 0.228]** (cluster 0.029-0.190, 142/216).
+  These are wider than the packet's own starting-point suggestion (e.g. ~0.5%-15% for the containers) because
+  the lower 0.20 score floor surfaces more borderline candidates bridging what would otherwise be a tighter
+  cluster -- see the hand/skin finding below for what some of that bridging turns out to be.
+- **Selection** (`training/spikes/select_v2.py`, 18 new unit tests, pure, no model): static classes
+  (`outer_box`, `tray`, `start_button`) get a per-run consensus -- cluster that class's in-band candidates
+  across the run's 5 frames by mutual IoU >= 0.5, take the cluster the most DISTINCT frames support, assign its
+  median box to every frame with a candidate agreeing (IoU >= 0.5), else "missing" (never invents a box).
+  Containers (`red_box`, `yellow_box`) reject any candidate overlapping (IoU > 0.5) the run's `outer_box`,
+  `tray` or `start_button` consensus, then keep the highest remaining score; every rejection is tagged with a
+  reason (`out_of_band`, `overlaps_<class>`, `not_highest_score`).
+- **Proxy metrics, v1 (checkpoint 1's own rule, re-run on this richer cache) vs v2, both n=60 frames:**
+
+  | metric | v1 | v2 |
+  |---|---|---|
+  | red_box/yellow_box IoU > 0.5 | 40 (67%) | 0 (0%) |
+  | a container IoU > 0.5 with outer_box | 57 (95%) | 0 (0%, by construction) |
+  | start_button IoU > 0.5 with a container or tray | 3 (5%) | 0 (0%) |
+  | missing (v2 only): outer_box / tray / start_button / red_box / yellow_box | n/a | 0 / 0 / 4 / 8 / 0 |
+  | mean static-box IoU vs run median | 0.873 | 1.0 (see caveat) |
+
+  The v1 red/yellow overlap (40/60) **exactly reproduces checkpoint 1's own finding**, a good consistency check
+  that re-deriving v1 on the lower-threshold cache didn't change the original result. The v2 row's "mean static
+  IoU = 1.0" is trivial, not a real improvement number: v2 assigns the smoothed consensus box itself to every
+  matched frame (essential-features.md section 14 Stage 3), so it is 1.0 by construction wherever a frame
+  isn't "missing" -- the `missing` counts are v2's real stability signal, not this row. Likewise v2's
+  container/outer-overlap is 0 by construction (select_container explicitly rejects those candidates), not an
+  earned result -- the real result is row 1 (red/yellow confusion down from 67% to 0%).
+  **Winning phrasing:** among chosen boxes, `red_box` picked "a red container." in 52/52 frames (100%; "a red
+  box." never won); `yellow_box` picked "a lime green container." in 60/60 frames (100%; "a yellow box." never
+  won) -- consistent with the 2026-09-30 DECISION that the real container's hue leans lime/olive. Static
+  classes' final box is a cross-run median, not attributable to a single phrase/call, so this tally does not
+  apply to them.
+- **(b) start_button finding, measured (not the thumbnail reading).** The Lead's reading of the v1 contact
+  sheets ("start_button lands on the lime container or the grey tray in roughly 8 of 60 frames") does not hold
+  up against the cached candidates: the **measured v1-rule count is 3/60 (5%)**, not ~8/60. This measured
+  number supersedes the thumbnail reading; the v1 sheets it came from are not to be counted either way (see
+  above).
+- **(c) Hue/saturation, central 50% of the box, OpenCV 0-179/0-255 scale, measured ONLY on frames with exactly
+  one in-band, non-outer candidate for that colour** (`select_v2.single_clean_candidate`):
+  - `red_box`: **n=11**, mean hue 4.51 (median 3.02, range 2.23-9.28), mean sat 123.06 (range 87.02-137.58).
+  - `yellow_box`: **n=10**, mean hue 27.31 (median 33.65, range 10.35-35.12), mean sat 122.29 (range
+    77.83-149.96).
+  Hue separates the two colours cleanly at the median (3.0 vs 33.7) but the closest pair across classes (red's
+  max 9.28, yellow's min 10.35) are under 1.1 hue units apart -- a real but thin margin, not a universal clean
+  threshold on this small sample. Saturation does not add separation: the two ranges (77-150 vs 87-138)
+  overlap almost completely.
+  **Hand/skin confusion, measured, not hidden:** flagging frames with sat < 100 (an unvalidated heuristic, not
+  a tuned threshold) in this same n=11/n=10 sample gives `red_box` 1/11 (9%) and `yellow_box` 3/10 (30%).
+  Visually confirmed in the v2 contact sheets that this is **not limited to red** as the packet's own framing
+  assumed: `yellow_box`'s final box lands on a hand/fingers rather than the lime container itself in
+  `x034#156`, `x034#208` and `x031#472` (the last of these also affects `red_box` in the same frame -- a
+  heavily occluded frame). Mechanism: a hand holding or covering a container produces an intermediate-sized
+  false candidate that falls inside the SAME area band as the real container, so the area band cannot reject
+  it; the static-consensus overlap exclusion (`outer_box`/`tray`/`start_button`) cannot catch it either, since
+  a hand is none of those three objects. This is a real, open gap in the v2 rule, not something either rule
+  solves.
+- **(d) Not tested this session:** gloves, other performers, other lighting setups, and (per the packet's own
+  rule) `val`/`test` runs -- all 12 sampled runs confirmed `train` split via `runs/manifest.csv` before this
+  session touched them.
+- **(e) None of this is accuracy.** There is no ground truth here -- every number above is a PROXY metric on
+  zero-shot Grounding DINO boxes against each other and against checkpoint 1's own prior measurements. The
+  real measure is the Lead's review of `data/spikes/v2/bad_boxes.csv` against the v2 contact sheets.
+- **Code:** `training/spikes/run_raw_cache.py` (cache, no tests, model + I/O), `training/spikes/select_v2.py`
+  (selection, 18 tests, pure), `training/spikes/run_checkpoint1b.py` (orchestration -- bands, proxy metrics,
+  contact sheets, `bad_boxes.csv`; no tests, same stated scope as `run_checkpoint1.py`).
+  `tests/unit/training/test_spikes_select_v2.py`. `python scripts/check.py` (full suite): **430 passed** (was
+  412), 0 failed, ruff clean; `--status` unchanged (F1-F14 all GREEN; spike code remains intentionally
+  unmarked, not a Tier-1 feature).
+- **Artifacts** (all git-ignored, `data/spikes/v2/`): `raw_candidates.jsonl` (600 lines), `report_v2.json`
+  (every number above plus the full per-frame chosen-box-or-missing-and-why table), `contact_sheet_v2_01.jpg`
+  through `_05.jpg` (12 frames per sheet, v2's final boxes only, one fixed colour per class, a legend on every
+  sheet, frame tag under each tile), `bad_boxes.csv` (header only), `run_raw_cache.log` (the cache run's log,
+  including the per-call timings above).
+- Status: RESULT recorded; checkpoint 1b complete, as scoped (box selection fix + v2 contact sheets). Awaiting
+  the Lead's `bad_boxes.csv` review before checkpoint 2 or 3 (P1.2's own packet) proceeds. Per the Lead's
+  checkpoint-1b instruction, this session stops here.
