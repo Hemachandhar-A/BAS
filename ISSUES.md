@@ -1251,3 +1251,14 @@ Code: `training/spikes/touch_variants.py` (pure helpers, tested), `run_cp3.py` (
 **P2.6 knobs.** The hold (`hysteresis_frames`; the measured hold was 0.75 s, i.e. 6 frames at 8 fps, the default stays 5 until then) and `touch_margin_frac`, tuned and checked on val only.
 
 **See also.** The CONTRACT entry "2026-10-02 P2 CONTRACT - hand_touching uses fingertips only (Lead decision D74)" on branch `contract/touch-fingertips` (contracts.py comment and essential-features.md F4 text); that PR must be merged first.
+## 2026-10-02 P2 CONTRACT - hand_touching uses fingertips only (Lead decision D74)
+
+**What changes.** The `hand_touching(label)` rule text (contracts.py section 3 comment block, essential-features.md F4 item 3 and its pitfall sentence) changes from "at least one of the 21 landmarks of any hand lies inside the grown box" to "at least one FINGERTIP landmark (MediaPipe indices 4, 8, 12, 16, 20) of any hand lies inside the box grown by `touch_margin_frac` on each side". Comment and prose only. The behaviour change itself is implemented on branch `p2-runtime` (state/tracker.py, DECISION entry there).
+
+**Why.** See the entries "2026-10-02 P1.2 addendum - START press rule variants on train clips (measurement only)" and "2026-10-02 P1.2 DECISION - zero-shot auto-labeler (Grounding DINO tiny) and prop setup" (section 2, cause A). Cited, not re-measured: with the any-landmark rule, 13 or 14 of the 14 correct train clips get extra START presses (an arm or palm over the card); the best fingertip variant (any fingertip, margin 0.10, hold 0.75 s at 8 fps) gives exactly one press in 9 of 14 correct clips with 0 extras.
+
+**What does NOT change.** The `HandTouchingRule(label)` type and every other field, type, validator and default in contracts.py; the `PerceptionConfig` fields (`extra="forbid"`); `config/experiment.json`; best detection of the label (floor-filtered); `touch_margin_frac` 0.10; the touching hand's `score` in the step confidence; `hysteresis_frames` (default 5).
+
+**Limitation (accepted by the Lead).** 9 of 14 correct train clips are recognised, 0 extras; the 80% acceptance bar (12 of 14) was NOT met. One performer, one setup, no gloves; val and test were not looked at.
+
+**Knobs.** The hold (`hysteresis_frames`; the measured hold was 0.75 s, i.e. 6 frames at 8 fps) and the margin are P2.6 knobs, tuned and checked on val only.

@@ -280,9 +280,10 @@ class Perception(Protocol):
 #                                    label itself is undetected.
 #   hand_touching(label)            true iff label has a best detection,
 #                                    grown by PerceptionConfig.touch_margin_frac
-#                                    on each side, and at least one of the 21
-#                                    landmarks of any hand lies inside the
-#                                    grown box.
+#                                    on each side, and at least one FINGERTIP
+#                                    landmark (MediaPipe indices 4, 8, 12, 16,
+#                                    20) of any hand lies inside the grown box.
+#                                    Other landmarks (wrist, palm) do not count.
 #   absent(label)                   true iff label has no detection at or
 #                                    above the confidence floor this frame.
 #   present(label)                  true iff label has at least one
