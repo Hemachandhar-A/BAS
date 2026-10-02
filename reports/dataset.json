@@ -1,0 +1,166 @@
+{
+ "version": 1,
+ "label_review": {
+  "gate_max_bad_fraction": 0.1,
+  "stratified": {
+   "n_frames": 60,
+   "per_class": {
+    "outer_box": {
+     "bad": 0,
+     "bad_fraction": 0.0,
+     "hidden_missing": 0,
+     "passes": true
+    },
+    "tray": {
+     "bad": 0,
+     "bad_fraction": 0.0,
+     "hidden_missing": 0,
+     "passes": true
+    },
+    "red_box": {
+     "bad": 8,
+     "bad_fraction": 0.13333333333333333,
+     "hidden_missing": 0,
+     "passes": false
+    },
+    "yellow_box": {
+     "bad": 5,
+     "bad_fraction": 0.08333333333333333,
+     "hidden_missing": 0,
+     "passes": true
+    },
+    "start_button": {
+     "bad": 0,
+     "bad_fraction": 0.0,
+     "hidden_missing": 0,
+     "passes": true
+    }
+   },
+   "gate_passes": false
+  },
+  "flagged": {
+   "n_frames": 20,
+   "per_class": {
+    "outer_box": {
+     "bad": 0,
+     "bad_fraction": 0.0,
+     "hidden_missing": 0,
+     "passes": true
+    },
+    "tray": {
+     "bad": 0,
+     "bad_fraction": 0.0,
+     "hidden_missing": 0,
+     "passes": true
+    },
+    "red_box": {
+     "bad": 5,
+     "bad_fraction": 0.25,
+     "hidden_missing": 0,
+     "passes": false
+    },
+    "yellow_box": {
+     "bad": 6,
+     "bad_fraction": 0.3,
+     "hidden_missing": 0,
+     "passes": false
+    },
+    "start_button": {
+     "bad": 0,
+     "bad_fraction": 0.0,
+     "hidden_missing": 0,
+     "passes": true
+    }
+   },
+   "gate_passes": false
+  },
+  "kept_frames": {
+   "n_kept": 59,
+   "per_class": {
+    "outer_box": {
+     "bad": 0,
+     "bad_fraction": 0.0,
+     "hidden_missing": 0,
+     "passes": true
+    },
+    "tray": {
+     "bad": 0,
+     "bad_fraction": 0.0,
+     "hidden_missing": 0,
+     "passes": true
+    },
+    "red_box": {
+     "bad": 0,
+     "bad_fraction": 0.0,
+     "hidden_missing": 0,
+     "passes": true
+    },
+    "yellow_box": {
+     "bad": 1,
+     "bad_fraction": 0.01694915254237288,
+     "hidden_missing": 0,
+     "passes": true
+    },
+    "start_button": {
+     "bad": 0,
+     "bad_fraction": 0.0,
+     "hidden_missing": 0,
+     "passes": true
+    }
+   },
+   "gate_passes": true
+  },
+  "kept_frames_stratified": {
+   "n_kept": 48,
+   "per_class": {
+    "outer_box": {
+     "bad": 0,
+     "bad_fraction": 0.0,
+     "hidden_missing": 0,
+     "passes": true
+    },
+    "tray": {
+     "bad": 0,
+     "bad_fraction": 0.0,
+     "hidden_missing": 0,
+     "passes": true
+    },
+    "red_box": {
+     "bad": 0,
+     "bad_fraction": 0.0,
+     "hidden_missing": 0,
+     "passes": true
+    },
+    "yellow_box": {
+     "bad": 1,
+     "bad_fraction": 0.020833333333333332,
+     "hidden_missing": 0,
+     "passes": true
+    },
+    "start_button": {
+     "bad": 0,
+     "bad_fraction": 0.0,
+     "hidden_missing": 0,
+     "passes": true
+    }
+   },
+   "gate_passes": true
+  },
+  "labeler_excluded_frames": 21,
+  "missing_cells_check": {
+   "reviewer_missing": 23,
+   "labeler_no_box_notes": 23,
+   "labeler_missing": 23,
+   "equal": true,
+   "only_reviewer": [],
+   "only_notes": [],
+   "only_labeler": []
+  },
+  "static_review": {
+   "runs": 46,
+   "rows": 138,
+   "bad_rows": 0
+  },
+  "generated_at": "2026-10-03T02:26:34"
+ }
+}

@@ -1,0 +1,15 @@
+# One text phrasing per class for the zero-shot auto-labeler (training/autolabel.py).
+# Chosen from the P1.2 phrase tallies (ISSUES.md 2026-10-02 P1.2 DECISION). Grounding DINO
+# convention: lowercase, trailing period. Class names must equal experiment.classes.
+version: 1
+model: IDEA-Research/grounding-dino-tiny
+box_threshold: 0.20
+text_threshold: 0.20
+score_floor: 0.20
+max_candidates: 10
+classes:
+  outer_box: ["a brown cardboard box."]
+  tray: ["a grey book."]
+  red_box: ["a red container."]
+  yellow_box: ["a lime green container."]
+  start_button: ["a white index card."]
