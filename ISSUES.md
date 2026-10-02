@@ -941,3 +941,35 @@ fast-forwarded to `origin/develop` (`f327ba2`) and pushed, no force needed.
   `--status` unchanged (F1-F14 all GREEN, spike code is intentionally unmarked -- not a Tier-1 feature).
 - Status: RESULT recorded; checkpoint 1 complete. Awaiting the operator's per-class bad-box counts from the
   contact sheets before checkpoint 2 (P1.2's own packet, IMPLEMENTATION_PLAN.md Part 10) proceeds.
+## 2026-10-02 P2 fix - local environment: `tests/` shadowed by a site-packages `tests` package (F7)
+
+- **Classification: LOCAL ENVIRONMENT interaction, not a product bug.** Nothing under `outputs/`,
+  `perception/`, `state/` or `engine/` changed. `tests/` has no owner in `IMPLEMENTATION_PLAN.md` Part 4, so
+  this was done in a P2 session.
+- **Symptom:** `tests/unit/outputs/test_tts.py::test_degrades_quietly_when_engine_init_fails` failed (alone or
+  in the full suite) with `ModuleNotFoundError: No module named 'tests.unit'` raised inside
+  `multiprocessing/spawn.py` while the spawned `TTSWorker` child process tried to unpickle the test's
+  module-level `_raising_engine_factory` callable (picklable-under-spawn, so it is referenced by its import
+  path, `tests.unit.outputs.test_tts._raising_engine_factory`).
+- **Cause:** this repo ships no `tests/__init__.py`. `ultralytics` 8.4.164 (the YOLO fallback detector,
+  AGENTS.md rule 15) installs its own top-level `tests/__init__.py` directly into `.venv/Lib/site-packages/`
+  (confirmed via `site-packages/ultralytics-8.4.164.dist-info/RECORD`, which lists `tests/__init__.py` at the
+  package root, not under `ultralytics/`). A plain `import tests` in a *fresh* interpreter -- which is exactly
+  what the spawned worker process does to unpickle the callable -- walks `sys.path` and resolves to that
+  installed regular package instead of this repo's own `tests/` directory, which has no `__init__.py` of its
+  own to win that resolution. Inside the main pytest process this is invisible: pytest's own
+  `--import-mode=importlib` (`pyproject.toml`'s `[tool.pytest.ini_options]`) pre-populates
+  `sys.modules['tests']` pointing at the repo before any test body runs, masking the hazard for anything
+  checked in-process -- it only surfaces where a *new* interpreter re-imports by name, as the TTS worker does.
+- **Fix:** added an empty `tests/__init__.py`. Nothing else changed.
+- **Regression test:** `tests/unit/harness/test_tests_package_resolution.py` -- spawns a bare
+  `sys.executable -c "import tests; ..."` subprocess (not pytest's own import machinery, which would hide the
+  bug per the note above) and asserts `tests.__path__[0]` resolves inside this repo, not
+  `site-packages`. Confirmed RED before the fix (`site-packages\tests` resolved), GREEN after.
+- **Verified no regression:** toggled `tests/__init__.py` on/off against the current tree and compared
+  `pytest tests/unit -m "not slow and not gold_video" --collect-only"` -- identical 397 collected / 1
+  deselected either way; the fix changes only the pass/fail outcome of the two tests above, not which tests
+  are collected. `python scripts/check.py` (full suite): 396 passed, 1 deselected, 0 failed. `--status`:
+  F1 11, F2 no tests (pre-existing, unaffected), F3 22, F4 22, F5 31, F6 10, **F7 22/22 (was 21/22)**, F8 3,
+  F9 16, F10 32, F11 7, F12 23, F13 25, F14 78 -- every count matches or exceeds its pre-fix value, all GREEN.
+- Status: DONE. F7 is now the full 22/22.
