@@ -308,12 +308,7 @@ def build_dataset(
 
 def main(argv: list[str] | None = None) -> None:
     from training.autolabel import FRAMES_DIR, LABELS_DIR, load_classes, load_index
-    from training.review_sheet import (
-        LABEL_REVIEW_PATH,
-        STATIC_REVIEW_PATH,
-        bad_fractions,
-        load_label_review,
-    )
+    from training.review_sheet import compute_outcome
 
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--out", type=Path, default=Path("data/dataset"))
@@ -334,17 +329,7 @@ def main(argv: list[str] | None = None) -> None:
     labels = json.loads((LABELS_DIR / "frame_labels.json").read_text(encoding="utf-8"))
     review = None
     if args.review_done:
-        sample = json.loads(Path("data/review/sample.json").read_text(encoding="utf-8"))
-        cells = [(r, int(fr)) for r, fr in sample["cells"]]
-        keys = {(r, fr, c) for r, fr in cells for c in classes}
-        rows = load_label_review(LABEL_REVIEW_PATH, classes, keys)
-        static_keys = {(r, min(i["frame_ids"]), c) for r, i in index.items() for c in classes}
-        static_rows = load_label_review(STATIC_REVIEW_PATH, classes, static_keys)
-        review = {
-            "label_review": bad_fractions(rows, classes, n_frames=len(cells)),
-            "n_frames": len(cells),
-            "static_review_bad_rows": sum(1 for r in static_rows if r.counts_as_bad),
-        }
+        review = compute_outcome()
     report = build_dataset(
         classes=classes,
         manifest_rows=manifest,

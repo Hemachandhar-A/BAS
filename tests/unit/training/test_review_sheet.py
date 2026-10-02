@@ -264,3 +264,109 @@ def test_bad_fraction_per_class_excludes_hidden_missing_and_applies_the_gate(tmp
     assert res["yellow_box"]["bad"] == 3 and res["yellow_box"]["passes"] is False
     assert res["tray"] == {"bad": 0, "bad_fraction": 0.0, "hidden_missing": 1, "passes": True}
     assert res["outer_box"]["passes"] is True
+
+
+# --- review_outcome (the gate numbers recorded in reports/dataset.json) -----------------------
+
+
+def _rr(run, fid, cls, verdict="ok", reason="", vis="", note=""):
+    from training.review_sheet import ReviewRow
+
+    return ReviewRow(run, fid, cls, verdict, reason, vis, note)
+
+
+def _outcome_fixture():
+    """Four frames: a#1 ok, a#2 excluded (red missing), b#1 ok but yellow wrong_box,
+    b#2 excluded (yellow missing, hidden). a#1, a#2 stratified; b#1, b#2 flagged."""
+    from training.review_sheet import NO_BOX_NOTE
+
+    labels = {
+        "a": {
+            "1": {"status": "ok", "boxes": {c: [0, 0, 1, 1] for c in CLASSES}, "missing": []},
+            "2": {
+                "status": "excluded",
+                "boxes": {c: [0, 0, 1, 1] for c in CLASSES if c != "red_box"},
+                "missing": ["red_box"],
+            },
+        },
+        "b": {
+            "1": {"status": "ok", "boxes": {c: [0, 0, 1, 1] for c in CLASSES}, "missing": []},
+            "2": {
+                "status": "excluded",
+                "boxes": {c: [0, 0, 1, 1] for c in CLASSES if c != "yellow_box"},
+                "missing": ["yellow_box"],
+            },
+        },
+    }
+    rows = []
+    for run, fid in [("a", 1), ("a", 2), ("b", 1), ("b", 2)]:
+        for c in CLASSES:
+            rows.append(_rr(run, fid, c))
+    rows = [
+        r
+        for r in rows
+        if (r.run_id, r.frame_id, r.cls)
+        not in {("a", 2, "red_box"), ("b", 1, "yellow_box"), ("b", 2, "yellow_box")}
+    ]
+    rows += [
+        _rr("a", 2, "red_box", "bad", "missing", "visible", NO_BOX_NOTE + " | held under the hand"),
+        _rr("b", 1, "yellow_box", "bad", "wrong_box"),
+        _rr("b", 2, "yellow_box", "bad", "missing", "hidden", NO_BOX_NOTE),
+    ]
+    return rows, labels
+
+
+def test_review_outcome_gates_strata_and_kept_frames():
+    from training.review_sheet import review_outcome
+
+    rows, labels = _outcome_fixture()
+    out = review_outcome(rows, CLASSES, [("a", 1), ("a", 2)], [("b", 1), ("b", 2)], labels)
+    assert out["stratified"]["n_frames"] == 2
+    assert out["stratified"]["per_class"]["red_box"]["bad"] == 1
+    assert out["stratified"]["per_class"]["red_box"]["bad_fraction"] == 0.5
+    assert out["stratified"]["gate_passes"] is False
+    assert out["flagged"]["n_frames"] == 2
+    # b#2 yellow is hidden-and-missing: not bad
+    assert out["flagged"]["per_class"]["yellow_box"]["bad"] == 1
+    # kept frames = labeler status ok: a#1 and b#1
+    assert out["kept_frames"]["n_kept"] == 2
+    assert out["kept_frames"]["per_class"]["yellow_box"]["bad"] == 1
+    assert out["kept_frames"]["per_class"]["yellow_box"]["bad_fraction"] == 0.5
+    assert out["kept_frames"]["per_class"]["red_box"]["bad"] == 0
+    assert out["kept_frames_stratified"]["n_kept"] == 1
+    assert out["kept_frames_stratified"]["gate_passes"] is True
+    assert out["labeler_excluded_frames"] == 2
+
+
+def test_review_outcome_checks_missing_cells_against_the_labeler_notes():
+    from training.review_sheet import review_outcome
+
+    rows, labels = _outcome_fixture()
+    out = review_outcome(rows, CLASSES, [("a", 1), ("a", 2)], [("b", 1), ("b", 2)], labels)
+    chk = out["missing_cells_check"]
+    assert chk["reviewer_missing"] == 2
+    assert chk["labeler_no_box_notes"] == 2
+    assert chk["labeler_missing"] == 2
+    assert chk["equal"] is True
+    # a reviewer marks a cell the labeler did have as missing -> not equal
+    rows.append(_rr("a", 1, "tray", "bad", "missing", "visible"))
+    rows = [
+        r
+        for r in rows
+        if not (r.run_id == "a" and r.frame_id == 1 and r.cls == "tray" and r.verdict == "ok")
+    ]
+    out = review_outcome(rows, CLASSES, [("a", 1), ("a", 2)], [("b", 1), ("b", 2)], labels)
+    assert out["missing_cells_check"]["equal"] is False
+    assert out["missing_cells_check"]["only_reviewer"] == [["a", 1, "tray"]]
+
+
+def test_review_outcome_fails_loudly_on_unlabeled_or_unreviewed_frames():
+    from training.review_sheet import review_outcome
+
+    rows, labels = _outcome_fixture()
+    labels["a"]["1"]["status"] = "pending"
+    with pytest.raises(ValueError, match="not labeled"):
+        review_outcome(rows, CLASSES, [("a", 1), ("a", 2)], [("b", 1), ("b", 2)], labels)
+    rows, labels = _outcome_fixture()
+    with pytest.raises(ValueError, match="no review row"):
+        review_outcome(rows[:-3], CLASSES, [("a", 1), ("a", 2)], [("b", 1), ("b", 2)], labels)

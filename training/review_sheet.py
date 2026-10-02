@@ -303,6 +303,89 @@ def bad_fractions(
     return out
 
 
+def _gate(per_class: dict[str, dict]) -> bool:
+    return all(v["passes"] for v in per_class.values())
+
+
+def _kept_gate(
+    rows: list[ReviewRow],
+    classes: list[str],
+    cells: list[tuple[str, int]],
+    labels: dict,
+) -> dict:
+    kept = {c for c in cells if labels[c[0]][str(c[1])]["status"] == "ok"}
+    kept_rows = [r for r in rows if (r.run_id, r.frame_id) in kept]
+    per_class = bad_fractions(kept_rows, classes, n_frames=len(kept)) if kept else {}
+    return {"n_kept": len(kept), "per_class": per_class, "gate_passes": _gate(per_class)}
+
+
+def review_outcome(
+    rows: list[ReviewRow],
+    classes: list[str],
+    stratified: list[tuple[str, int]],
+    flagged: list[tuple[str, int]],
+    labels: dict,
+) -> dict:
+    """The review outcome recorded in ``reports/dataset.json``: the plan's gate on the
+    stratified frames, the flagged frames reported separately, the same gate over the
+    frames the labeler kept (status ``ok``; excluded frames never become training
+    labels), and the check that the reviewer's ``missing`` cells equal the labeler's
+    ``no box drawn`` notes and its own missing classes. Raises ``ValueError`` if a
+    sampled frame is not labeled yet or has no review row for a class."""
+    cells = stratified + flagged
+    have = {(r.run_id, r.frame_id, r.cls) for r in rows}
+    for run, fid in cells:
+        lab = labels.get(run, {}).get(str(fid))
+        if lab is None or lab["status"] == "pending":
+            raise ValueError(f"{run}#{fid} is not labeled yet")
+        for cls in classes:
+            if (run, fid, cls) not in have:
+                raise ValueError(f"no review row for {run}#{fid} {cls}")
+    in_sample = set(cells)
+    rows = [r for r in rows if (r.run_id, r.frame_id) in in_sample]
+    strat_set, flag_set = set(stratified), set(flagged)
+    strat_rows = [r for r in rows if (r.run_id, r.frame_id) in strat_set]
+    flag_rows = [r for r in rows if (r.run_id, r.frame_id) in flag_set]
+    strat = bad_fractions(strat_rows, classes, n_frames=len(stratified))
+    flag = bad_fractions(flag_rows, classes, n_frames=len(flagged))
+
+    reviewer = {(r.run_id, r.frame_id, r.cls) for r in rows if r.reason == "missing"}
+    notes = {(r.run_id, r.frame_id, r.cls) for r in rows if r.note.startswith(NO_BOX_NOTE)}
+    labeler = {
+        (run, fid, cls)
+        for run, fid in cells
+        if labels[run][str(fid)]["status"] == "excluded"
+        for cls in labels[run][str(fid)]["missing"]
+    }
+
+    def _cells(s: set) -> list[list]:
+        return [[r, f, c] for r, f, c in sorted(s)]
+
+    return {
+        "gate_max_bad_fraction": GATE_MAX_BAD_FRACTION,
+        "stratified": {
+            "n_frames": len(stratified),
+            "per_class": strat,
+            "gate_passes": _gate(strat),
+        },
+        "flagged": {"n_frames": len(flagged), "per_class": flag, "gate_passes": _gate(flag)},
+        "kept_frames": _kept_gate(rows, classes, cells, labels),
+        "kept_frames_stratified": _kept_gate(rows, classes, stratified, labels),
+        "labeler_excluded_frames": sum(
+            1 for run, fid in cells if labels[run][str(fid)]["status"] == "excluded"
+        ),
+        "missing_cells_check": {
+            "reviewer_missing": len(reviewer),
+            "labeler_no_box_notes": len(notes),
+            "labeler_missing": len(labeler),
+            "equal": reviewer == notes == labeler,
+            "only_reviewer": _cells(reviewer - notes),
+            "only_notes": _cells(notes - reviewer),
+            "only_labeler": _cells(labeler - reviewer),
+        },
+    }
+
+
 # --- I/O ---------------------------------------------------------------------------
 
 
@@ -411,16 +494,57 @@ def cmd_static() -> None:
         print(f"wrote {STATIC_REVIEW_PATH} ({len(cells) * len(static)} rows, all verdict=ok)")
 
 
+def compute_outcome() -> dict:
+    """Load both review CSVs with the strict loader and compute the review outcome
+    (fails loudly on any CSV problem or a frame the labeler has not finished)."""
+    from training.autolabel import load_index
+
+    index, classes = load_index(), _classes()
+    sample = json.loads(SAMPLE_PATH.read_text(encoding="utf-8"))
+    stratified = [(r, int(f)) for r, f in sample["stratified"]]
+    flagged = [(r, int(f)) for r, f, *_ in sample["flagged"]]
+    cells = stratified + flagged
+    keys = {(r, f, c) for r, f in cells for c in classes}
+    rows = load_label_review(LABEL_REVIEW_PATH, classes, keys)
+    static_keys = {(r, min(i["frame_ids"]), c) for r, i in index.items() for c in STATIC_CLASSES}
+    static_rows = load_label_review(STATIC_REVIEW_PATH, classes, static_keys)
+    out = review_outcome(rows, classes, stratified, flagged, _labels())
+    out["static_review"] = {
+        "runs": len(index),
+        "rows": len(static_rows),
+        "bad_rows": sum(1 for r in static_rows if r.counts_as_bad),
+    }
+    return out
+
+
+def cmd_outcome() -> None:
+    from datetime import datetime
+
+    out = compute_outcome()
+    out["generated_at"] = datetime.now().isoformat(timespec="seconds")
+    path = Path("reports/dataset.json")
+    report = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {"version": 1}
+    report["label_review"] = out
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(report, indent=1), encoding="utf-8")
+    print(json.dumps(out, indent=1))
+
+
 def main(argv: list[str] | None = None) -> None:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     g = ap.add_mutually_exclusive_group()
     g.add_argument("--sample", action="store_true", help="draw the TRAIN review sample")
     g.add_argument("--static", action="store_true", help="one frame per run, static boxes only")
+    g.add_argument(
+        "--outcome", action="store_true", help="record the review outcome in reports/dataset.json"
+    )
     args = ap.parse_args(argv)
     if args.sample:
         cmd_sample()
     elif args.static:
         cmd_static()
+    elif args.outcome:
+        cmd_outcome()
     else:
         cmd_sheets()
 
