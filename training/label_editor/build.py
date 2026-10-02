@@ -246,11 +246,13 @@ def build_frames(
     if static:  # (c) one frame per run, static boxes only
         for run in runs:
             fid = min(index[run]["frame_ids"])
-            if not allowed(run, fid):
+            # a static check ignores ``only`` (it is per run) and needs only the run's static
+            # boxes, which exist before the frame's movable calls are done
+            lab = labels.get(run, {}).get(str(fid))
+            if lab is None or (lab["status"] == "pending" and not lab["boxes"]):
+                pending += 1
                 continue
-            lab = label_of(run, fid)
-            if lab is not None:
-                frames.append(entry("static", run, fid, lab, only_classes=STATIC_CLASSES))
+            frames.append(entry("static", run, fid, lab, only_classes=STATIC_CLASSES))
     info = {
         "split": split,
         "n_excluded": sum(1 for f in frames if f["kind"] == "excluded"),

@@ -324,3 +324,16 @@ def test_page_js_parses_with_node(tmp_path):
         f.write_text(chunk.split("</script>", 1)[0], encoding="utf-8")
         r = subprocess.run([node, "--check", str(f)], capture_output=True, text=True)
         assert r.returncode == 0, r.stderr
+
+
+def test_static_check_uses_a_frame_whose_movable_calls_are_pending_if_its_static_boxes_exist():
+    labels = _labels()
+    labels["a"]["0"] = {
+        "status": "pending",
+        "boxes": {c: list(b) for c, b in STATICS.items()},
+        "missing": [],
+        "reason": "",
+    }
+    labels["b"]["0"] = {"status": "pending", "boxes": {}, "missing": [], "reason": ""}
+    frames, _ = _frames(static=True, labels=labels)
+    assert [(f["run"], f["frame"]) for f in frames if f["kind"] == "static"] == [("a", 0)]

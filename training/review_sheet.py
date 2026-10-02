@@ -4,6 +4,9 @@
   python -m training.review_sheet            # gate sheets + pre-filled data/label_review.csv
   python -m training.review_sheet --static   # one frame per run (all runs), static boxes only,
                                              # + pre-filled data/review/static_review.csv
+  python -m training.review_sheet --outcome  # review outcome (gate numbers) -> reports/dataset.json
+  python -m training.review_sheet --edit --split <s> [--gold [N]] [--static] [--only-sample]
+                                             # the label editor page data/review/editor_<s>.html
 
 The gate sample is drawn from TRAIN runs only (never val or test, AGENTS.md rule 12): a
 seeded stratified draw (at least ``PER_RUN_MIN`` frames per run) plus up to ``N_FLAGGED``
@@ -530,16 +533,60 @@ def cmd_outcome() -> None:
     print(json.dumps(out, indent=1))
 
 
+def cmd_edit(split: str, gold: int | None, static: bool, only_sample: bool) -> None:
+    from training.label_editor.build import generate_editor
+
+    path, info = generate_editor(split, gold, static, only_sample)
+    print(
+        f"{path}: {info['n_excluded']} excluded frames ({info['missing_cells']} missing cells), "
+        f"{info['gold_frames']} gold, {info['n_static']} static check frames, "
+        f"{info['pending_skipped']} pending frames skipped"
+    )
+    for cls, counts in info["proposals_per_missing_class"].items():
+        if counts:
+            print(f"  {cls}: {len(counts)} missing, proposals per cell {counts}")
+    print(
+        "open it from file:// in Chrome or Edge; download the overlay to "
+        f"data/corrections/{split}.json"
+    )
+
+
 def main(argv: list[str] | None = None) -> None:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     g = ap.add_mutually_exclusive_group()
     g.add_argument("--sample", action="store_true", help="draw the TRAIN review sample")
-    g.add_argument("--static", action="store_true", help="one frame per run, static boxes only")
     g.add_argument(
         "--outcome", action="store_true", help="record the review outcome in reports/dataset.json"
     )
+    g.add_argument("--edit", action="store_true", help="generate the label editor page")
+    ap.add_argument(
+        "--static",
+        action="store_true",
+        help="one frame per run, static boxes only (with --edit: add the check frames)",
+    )
+    ap.add_argument("--split", choices=("train", "val", "test"), help="with --edit")
+    ap.add_argument(
+        "--gold",
+        nargs="?",
+        type=int,
+        const=6,
+        default=None,
+        metavar="N",
+        help="with --edit: also N seeded frames per run to verify (default 6 when given)",
+    )
+    ap.add_argument(
+        "--only-sample",
+        action="store_true",
+        help="with --edit: only the frames of data/review/sample.json (the reviewed frames)",
+    )
     args = ap.parse_args(argv)
-    if args.sample:
+    if args.edit:
+        if not args.split:
+            ap.error("--edit needs --split")
+        cmd_edit(args.split, args.gold, args.static, args.only_sample)
+    elif args.static and (args.sample or args.outcome):
+        ap.error("--static combines only with --edit")
+    elif args.sample:
         cmd_sample()
     elif args.static:
         cmd_static()

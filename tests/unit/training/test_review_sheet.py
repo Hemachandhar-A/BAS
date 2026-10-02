@@ -370,3 +370,14 @@ def test_review_outcome_fails_loudly_on_unlabeled_or_unreviewed_frames():
     rows, labels = _outcome_fixture()
     with pytest.raises(ValueError, match="no review row"):
         review_outcome(rows[:-3], CLASSES, [("a", 1), ("a", 2)], [("b", 1), ("b", 2)], labels)
+
+
+def test_cli_edit_needs_a_split_and_static_only_combines_with_edit():
+    from training.review_sheet import main
+
+    with pytest.raises(SystemExit):
+        main(["--edit"])
+    with pytest.raises(SystemExit):
+        main(["--static", "--outcome"])
+    with pytest.raises(SystemExit):
+        main(["--edit", "--split", "dev"])
