@@ -444,7 +444,10 @@ def _legend_bar(width: int, height: int = 40) -> np.ndarray:
 
 
 def write_contact_sheets_v2(
-    tiles: list[tuple[str, np.ndarray]], out_dir: Path, per_sheet: int = 12
+    tiles: list[tuple[str, np.ndarray]],
+    out_dir: Path,
+    per_sheet: int = 12,
+    prefix: str = "contact_sheet_v2_",
 ) -> list[str]:
     paths: list[str] = []
     thumb_w, thumb_h = 320, 220
@@ -466,7 +469,7 @@ def write_contact_sheets_v2(
             y0 = legend.shape[0] + r * thumb_h
             sheet[y0 : y0 + thumb_h, c * thumb_w : (c + 1) * thumb_w] = tile
         idx = sheet_start // per_sheet + 1
-        path = out_dir / f"contact_sheet_v2_{idx:02d}.jpg"
+        path = out_dir / f"{prefix}{idx:02d}.jpg"
         cv2.imwrite(str(path), sheet)
         paths.append(str(path))
     return paths
