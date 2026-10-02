@@ -338,6 +338,8 @@ def build_coco(
                 {"id": image_id, "file_name": f"{run}_{fid}.jpg", "width": w, "height": h}
             )
             for cid, cls in enumerate(classes):
+                if cls not in lab["boxes"]:  # an overlay frame may deliberately omit a class
+                    continue
                 x1, y1, x2, y2 = lab["boxes"][cls]
                 x1, y1 = max(0.0, x1), max(0.0, y1)
                 x2, y2 = min(float(w), x2), min(float(h), y2)
