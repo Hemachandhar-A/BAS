@@ -1183,3 +1183,60 @@ Hidden object: no box. Partly hidden: a box on the visible part only (the review
 Gloves (no glove clips); other performers; other lighting; other camera positions or any camera move; val and test runs (never opened); swap, idle and repeat clips in the hold-out (it had 4 correct runs and 1 skip); a second performer or setup (one performer, one setup throughout); YOLO-World.
 
 Code: `training/spikes/cp2.py` (pure helpers, tested), `bad_counts.py` (tested), `run_cp2.py` (orchestration: plan, cache, assemble, tables). Tests: `tests/unit/training/test_spikes_cp2.py`, `test_spikes_bad_counts.py`. Artifacts (git-ignored): `data/spikes/cp2/` (`raw.jsonl` and `perception.jsonl` per run, `report.json`, `tables.md`, `summary.json`, `cache.log`). Status: checkpoints 2 and 3 complete; the Lead's call on section 2 (touch rule and frame-count config are P2's, a re-recording question for the card position) is open.
+
+## 2026-10-02 P1.2 addendum - START press rule variants on train clips (measurement only)
+
+Scope: S-C addendum, **train runs only** (every run whose `runs/manifest.csv` split is "train": 26 runs; no val or test run was opened, sampled or run). `HF_HUB_OFFLINE=1`; no install or download. **Nothing in `state/`, `engine/`, `perception/`, `contracts.py`, `config/experiment.json` or the F4 text was changed**; no threshold was tuned. Acceptance was pre-registered before any number was seen: a variant is ACCEPTABLE if it gives exactly the expected number of start presses in at least 80% of the train clips with script_type "correct" (12 of 14) AND extra events in at most 10% of all train clips (2 of 26).
+
+**Result: no variant meets the acceptance (0 of 40 variant x hold x fps cells).** The best cells reach 9 of 14 correct clips exact (needs 12).
+
+### 1. Clips
+26 train runs: correct 14, skip 5, swap 5, idle 1, repeat 1 (14757 frames, 29.9 to 30.0 fps). Expected presses = count of `start_pressed` in `performed_steps`: 23 runs expect 1, x027 (repeat) expects 2, x023 (idle) and x043 (swap, start omitted) expect 0. **Excluded: none** (card found in 26 of 26, none below `detector_conf_floor`).
+
+### 2. Card box (v3 static consensus, unchanged)
+Five frames spread over each clip at 4 fps, phrasing "a white index card.", frozen white-paper test and area band; `data/spikes/cp3/<run>/raw.jsonl` (105 new model calls, 6.9 min; the five cp2 clips reused cp2's identical start_button calls). The card passed the white-paper test in 26 of 26 runs; the five cp2 boxes are identical to cp2's.
+
+### 3. Hands (MediaPipe via `perception/hands.py`, every frame at the target rate, fresh landmarker per run and rate)
+| target fps | frames (26 clips) | with a hand | share | hands-only fps |
+|---|---|---|---|---|
+| 4 | 1977 | 1386 | 70.1% | 44.5 |
+| 8 | 3946 | 2979 | 75.5% | 44.9 |
+
+Hands-only fps is this CPU laptop with nothing else running (a re-run of all 26 clips; the first pass, run beside the detector, was slower and is not used). The two passes gave byte-identical landmarks. The 8 fps stream has more frames with a hand than the 4 fps stream (75.5 vs 70.1%); a cause (tracking is easier at smaller motion) is a guess, not tested.
+Share of frames with the index fingertip (landmark 8) inside the grown card box: margin 0.10 / 0.25 / 0.50 = 4.5 / 4.9 / 5.9% at 4 fps (89 / 96 / 117 frames), 8.6 / 9.3 / 10.4% at 8 fps (340 / 368 / 412 frames).
+
+### 4. Validity check: PASSED
+V0 with the tracker defaults (hysteresis 5, release 5, baseline 10, frame counts) on the 4 fps hands reproduces the real `StateTracker` start_pressed events of cp2 at the same times: x011 6.24 and 15.01, x019 10.74, x001 7.23 and 16.50, x037 none, x043 6.27 and 11.50. The tested helper (`press_events`) also agrees with `state.tracker.StateTracker` on four flag sequences.
+
+### 5. Variants x hold x fps
+Variants: V0 current (any of 21 landmarks, margin 0.10); V1a / V1b / V1c index tip only, margin 0.10 / 0.25 / 0.50; V2 any fingertip (4, 8, 12, 16, 20), margin 0.10. Hold H in seconds replaces the hysteresis (frames = ceil(H x fps)). Baseline and release are fixed in seconds at the cp2 defaults (2.5 s and 1.25 s = 10 and 5 frames at 4 fps), so 20 and 10 frames at 8 fps. Cells: **exact / missed / extra over all 26 clips ; same over the 14 correct clips.** (A clip is judged by event count only, so none is both missed and extra.)
+
+| fps | variant | H = 0.25 s | H = 0.5 s | H = 0.75 s | H = 1.0 s |
+|---|---|---|---|---|---|
+| 4 | V0 | 3/0/23 ; 0/0/14 | 5/1/20 ; 0/0/14 | 4/3/19 ; 0/0/14 | 7/3/16 ; 1/0/13 |
+| 4 | V1a | 8/17/1 ; 4/10/0 | 9/17/0 ; 4/10/0 | 8/18/0 ; 4/10/0 | 8/18/0 ; 4/10/0 |
+| 4 | V1b | 9/16/1 ; 5/9/0 | 8/17/1 ; 4/10/0 | 8/18/0 ; 4/10/0 | 8/18/0 ; 4/10/0 |
+| 4 | V1c | 11/12/3 ; 8/5/1 | 7/17/2 ; 4/10/0 | 8/17/1 ; 4/10/0 | 8/17/1 ; 4/10/0 |
+| 4 | V2 | 13/7/6 ; 9/1/4 | 10/12/4 ; 6/5/3 | 10/15/1 ; 5/8/1 | 10/16/0 ; 5/9/0 |
+| 8 | V0 | 5/0/21 ; 0/0/14 | 8/0/18 ; 0/0/14 | 8/2/16 ; 1/0/13 | 9/2/15 ; 1/0/13 |
+| 8 | V1a | 14/11/1 ; 8/6/0 | 14/12/0 ; 7/7/0 | 14/12/0 ; 7/7/0 | 12/14/0 ; 5/9/0 |
+| 8 | V1b | 14/11/1 ; 8/6/0 | 14/12/0 ; 7/7/0 | 14/12/0 ; 7/7/0 | 14/12/0 ; 7/7/0 |
+| 8 | V1c | 15/10/1 ; 9/5/0 | 14/12/0 ; 7/7/0 | 14/12/0 ; 7/7/0 | 14/12/0 ; 7/7/0 |
+| 8 | V2 | 12/6/8 ; 6/2/6 | 14/9/3 ; 7/4/3 | 16/10/0 ; 9/5/0 | 14/12/0 ; 7/7/0 |
+
+Sensitivity: holding baseline and release at the tracker's raw frame counts (10 and 5 frames) instead of seconds changes any count by at most 3 clips in any cell and does not change the acceptance outcome (keys ending `|frames` in `data/spikes/cp3/results.json`).
+
+### 6. What the data says
+- **V0 (the current rule) gives extra events in 13 or 14 of the 14 correct clips at every hold and rate** (at 8 fps and 1.0 s, 15 of 26 clips have extra events). A longer hold does not fix it, because an arm or palm stays over the card for seconds. V0 misses at most 3 of 26 clips (a palm is nearly always there).
+- **Index-tip-only variants trade extras for misses**: extras drop to 0 to 3 of 26 but 10 to 18 of 26 clips are missed. Widening the margin to 0.50 helps little (best correct-exact 9 of 14, V1c at 8 fps, 0.25 s).
+- **V2 (any fingertip) at 8 fps and 0.75 s (6 frames) is the best cell**: 16 of 26 exact, 10 missed, **0 extra**; correct clips 9 exact, 5 missed, 0 extra (V1c at 8 fps and 0.25 s is the same 9 of 14 but 15 of 26 exact and 1 extra). Shorter V2 holds add extras (0.25 s: 8 of 26 extra), longer holds add misses (1.0 s: 12 missed). At 4 fps V2 needs H = 1.0 s for 0 extras and then misses 16 of 26.
+- **Why clips are missed** (`data/spikes/cp3/diagnostics.md`, 8 fps, per clip). In 9 clips (x006 x007 x008 x012 x026 x027 x034 x037 x044) no variant sees a fingertip near the card long enough: the nearest index tip is 18 to 65 px from the card box (0.15 to 0.56 card widths) and the longest fingertip run inside the grown box is 0 to 3 frames, while a hand is detected in 47 to 74% of their frames. This matches the cp2 entry: the card sits at the frame's bottom edge, so a real press leaves little or no fingertip in frame (x001 had a 14-frame no-hand gap at 4 fps), or an arm covers the card (x037, latched at baseline in cp2). In x043 (expects 0) V0 has 28 frames with a landmark on the card, palm or arm only (nearest index tip 108 px). x004 is missed by V2 at 0.75 s only because its fingertip run is 0.62 s. x001 is missed by V1c at 0.25 s only because its index-tip run is 0.12 s (another fingertip stays 1.5 s). The one extra of V1c at 8 fps and 0.25 s is x031 (second event at 18.14 s, a second touch after release in a swap clip).
+- Expected counts come from the scripts' `performed_steps`; there are no per-frame press labels, so an "exact" can in principle be a coincidence (a fingertip touch that is not the press). Press times were not checked against video for this addendum.
+
+### 7. Recommendation (from train numbers only)
+No variant is ACCEPTABLE, so no rule is recommended as passing. The numbers say the rule is not the bottleneck: with this layout the fingertip is detected near the card in too few frames for any hold to reach 12 of 14. If the Lead wants the best available rule for a P2 session to implement and test on val, the train numbers point to **V2 (any fingertip, margin 0.10) with a hold of 0.75 s** (6 frames at 8 fps; at 4 fps 3 frames gives 5 of 14 correct exact and 1 extra, so the rate matters), run at 8 fps or higher. The other train-supported change is on the perception side: the cp2 observation about moving the card up by about one hand length would address the 9 missed clips directly, but is untested (it needs a re-recording).
+
+### 8. NOT known
+Val and test were not opened, so nothing here is validated; one performer, one setup, one camera position, no gloves; 26 clips, 14 of them "correct" (one clip is 7 points against a threshold of 12 of 14); true press moments are not labeled; MediaPipe used its default 0.5 confidences; converting the hold in seconds to frames at the real frame rate is a P2.6 decision (here only ceil() at 4 and 8 fps); the hold replaces hysteresis only, release and baseline were not tuned; V2's landmark set and the margins were fixed before the run, not searched.
+
+Code: `training/spikes/touch_variants.py` (pure helpers, tested), `run_cp3.py` (orchestration: plan, card cache, cards, hands, analyze, report). Tests: `tests/unit/training/test_spikes_touch_variants.py` (22). Artifacts (git-ignored): `data/spikes/cp3/` (`plan.json`, `cards.json`, `results.json`, `diagnostics.md`, `hands_timing.json`, per run `raw.jsonl`, `hands_4.jsonl`, `hands_8.jsonl`, logs). Stop here: the Lead decides the variant; a separate P2 session implements it.
