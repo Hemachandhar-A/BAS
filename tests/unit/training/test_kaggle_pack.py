@@ -65,10 +65,10 @@ def test_a_missing_split_folder_is_refused(tmp_path):
 
 def test_dataset_metadata_is_private_by_default_with_a_cli_valid_licence():
     for meta, slug in (
-        (K.dataset_metadata("hemachandhara"), "sih26174-dataset"),
-        (K.code_metadata("hemachandhara"), "sih26174-code"),
+        (K.dataset_metadata("example-owner"), "sih26174-dataset"),
+        (K.code_metadata("example-owner"), "sih26174-code"),
     ):
-        assert meta["id"] == f"hemachandhara/{slug}"
+        assert meta["id"] == f"example-owner/{slug}"
         assert meta["licenses"] == [{"name": "other"}]  # one of the CLI's own license names
         assert 6 <= len(meta["title"]) <= 50 and 6 <= len(slug) <= 50  # limits in the CLI
         assert set(meta) <= {"title", "id", "licenses", "description"}
@@ -76,20 +76,20 @@ def test_dataset_metadata_is_private_by_default_with_a_cli_valid_licence():
 
 
 def test_kernel_metadata_uses_only_template_keys_and_both_datasets():
-    meta = K.kernel_metadata("hemachandhara")
+    meta = K.kernel_metadata("example-owner")
     template = {
         "id", "title", "code_file", "language", "kernel_type", "is_private", "enable_gpu",
         "enable_tpu", "enable_internet", "machine_shape", "dataset_sources",
         "competition_sources", "kernel_sources", "model_sources",
     }  # fmt: skip
     assert set(meta) <= template
-    assert meta["id"] == "hemachandhara/sih26174-train"
+    assert meta["id"] == "example-owner/sih26174-train"
     assert meta["kernel_type"] == "script" and meta["code_file"] == "run_training.py"
     assert meta["is_private"] == "true" and meta["enable_gpu"] == "true"
     assert meta["enable_internet"] == "true"
     assert meta["dataset_sources"] == [
-        "hemachandhara/sih26174-dataset",
-        "hemachandhara/sih26174-code",
+        "example-owner/sih26174-dataset",
+        "example-owner/sih26174-code",
     ]
     assert 5 <= len(meta["title"])  # the CLI refuses shorter titles
     assert meta["title"].lower().replace(" ", "-") == meta["id"].split("/")[1]  # slug matches title
@@ -110,7 +110,7 @@ def test_weights_manifest_records_sha_size_and_licence(tmp_path):
 
 
 def test_secret_scan_finds_credential_names_and_contents(tmp_path):
-    (tmp_path / "ok.json").write_text('{"id": "hemachandhara/x"}')
+    (tmp_path / "ok.json").write_text('{"id": "example-owner/x"}')
     assert K.secret_problems(tmp_path) == []
     (tmp_path / "kaggle.json").write_text("{}")
     (tmp_path / "notes.txt").write_text("token KGAT_abcdef123456")
@@ -162,16 +162,16 @@ def test_git_archive_of_a_missing_path_is_a_pack_error(tmp_path):
 
 
 def test_commands_are_in_order_all_network_except_the_local_mode_switch():
-    cmds = K.commands("hemachandhara", Path("data/kaggle_upload"))
+    cmds = K.commands("example-owner", Path("data/kaggle_upload"))
     text = [c for _, c in cmds]
     assert text[0].startswith("uv tool run kaggle datasets create -p dataset")
     assert text[1].startswith("uv tool run kaggle datasets create -p code")
     assert text[2].startswith("uv tool run kaggle kernels push -p kernel")
-    assert "kernels status hemachandhara/sih26174-train" in text[3]
-    assert "kernels output hemachandhara/sih26174-train" in text[4]
+    assert "kernels status example-owner/sih26174-train" in text[3]
+    assert "kernels output example-owner/sih26174-train" in text[4]
     assert "--set-mode FULL" in text[5] and not text[5].startswith("uv tool run kaggle")
     assert text[6] == text[2] and "status" in text[7] and "output" in text[8]
-    md = K.commands_markdown("hemachandhara", Path("data/kaggle_upload"))
+    md = K.commands_markdown("example-owner", Path("data/kaggle_upload"))
     assert md.count("needs the Lead's explicit yes (network)") == 8
     assert "GPU T4" in md
     assert "--public" not in md and " -u" not in md  # nothing is made public
@@ -195,3 +195,22 @@ def test_the_pack_module_never_runs_the_kaggle_cli_or_opens_a_socket():
     assert "socket" not in code and "urllib" not in code and "requests" not in code
     run_calls = [ln for ln in code.splitlines() if "subprocess.run(" in ln]
     assert len(run_calls) == 1 and '["git"' in run_calls[0]  # the only process it starts is git
+
+
+def test_owner_comes_from_the_argument_then_the_environment_and_has_no_default():
+    assert K.resolve_owner("example-owner", {}) == "example-owner"
+    assert K.resolve_owner(None, {"KAGGLE_OWNER": "env-owner"}) == "env-owner"
+    assert K.resolve_owner("arg-owner", {"KAGGLE_OWNER": "env-owner"}) == "arg-owner"
+    assert K.resolve_owner(None, {}) is None
+    assert K.resolve_owner("  ", {"KAGGLE_OWNER": " "}) is None
+
+
+def test_cli_without_an_owner_is_refused(monkeypatch, capsys):
+    monkeypatch.delenv("KAGGLE_OWNER", raising=False)
+    with pytest.raises(SystemExit) as e:
+        K.main(["--print-commands"])
+    assert e.value.code == 2
+    assert "KAGGLE_OWNER" in capsys.readouterr().err
+    monkeypatch.setenv("KAGGLE_OWNER", "example-owner")
+    assert K.main(["--print-commands"]) == 0
+    assert "example-owner/sih26174-train" in capsys.readouterr().out

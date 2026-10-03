@@ -1,0 +1,36 @@
+{
+ "model": "yolo11n",
+ "versions": {
+  "torch": "2.11.0+cu128",
+  "torch_build": "cuda 12.8",
+  "rfdetr": "1.11.0",
+  "ultralytics": "8.4.164",
+  "python": "3.13.15"
+ },
+ "seed": 0,
+ "epochs": 100,
+ "lr": 5e-05,
+ "batch_size": 4,
+ "grad_accum_steps": 4,
+ "effective_batch": 16,
+ "n_train": 593,
+ "n_valid": 173,
+ "seconds_per_iteration_measured": 0.050135275500110765,
+ "total_seconds": 447.372568364,
+ "best_val_map": 0.97386,
+ "dataset_stamp": "622c277b5d0e5e06",
+ "classes": [
+  "outer_box",
+  "tray",
+  "red_box",
+  "yellow_box",
+  "start_button"
+ ],
+ "detector_file": "detector_yolo11n.pt",
+ "detector_sha256": "cb9cd840618525058823e4242e8ced9539118dc2f134456785667289e1ab1613",
+ "device_name": "Tesla T4",
+ "dry_run": false,
+ "notes": [],
+ "gpus_seen": 2,
+ "gpu_used": 1
+}

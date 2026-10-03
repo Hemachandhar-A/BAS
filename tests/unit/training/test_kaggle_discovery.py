@@ -44,7 +44,7 @@ def _zip_of(path: Path, files: dict[str, bytes], prefix: str = "") -> str:
 
 @pytest.mark.parametrize(
     "sub",
-    ["", "dataset", "data/dataset", "datasets/hemachandhara/sih26174-dataset"],
+    ["", "dataset", "data/dataset", "datasets/example-owner/sih26174-dataset"],
     ids=["a_root", "b_one_extra_folder", "b_two_extra_folders", "c_datasets_owner_slug"],
 )
 def test_discovery_finds_the_single_root_in_every_layout(tmp_path, sub):

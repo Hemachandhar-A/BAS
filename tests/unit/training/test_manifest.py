@@ -78,3 +78,12 @@ def test_classes_equal_the_experiment_in_order(manifest):
     exp = json.loads((ROOT / "config" / "experiment.json").read_text(encoding="utf-8"))
     for d in manifest["detectors"]:
         assert d["classes"] == exp["classes"]
+
+
+def test_tracked_training_summaries_match_the_manifest_hashes(manifest):
+    root = Path(__file__).resolve().parents[3]
+    for d in manifest["detectors"]:
+        p = root / d["training_summary"]
+        assert p.is_file(), f"{p} must be tracked"
+        assert _sha(p) == d["training_summary_sha256"], d["name"]
+        assert d["trained_at"] == "2026-10-03" and "Kaggle run log" in d["trained_at_note"]

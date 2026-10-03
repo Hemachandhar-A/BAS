@@ -1510,3 +1510,66 @@ Red/yellow confusion (best-IoU >= 0.5 at the floor). All frames: red 211 red, 1 
 **Convention: pose disabled.** When pose is disabled (`enable_pose=False`, the default) callers pass `pose_sha256="none"`, so the stamp reads `pose:none`.
 
 **Who must follow.** P1 (writer) composes the stamp from `weights/MANIFEST.json`, passing the manifest's detector name mapped to the stamp label: `yolo11n` -> `"yolo11n"`, `rfdetr_nano` -> `"rfdetr-nano"` (underscore in the manifest, hyphen in the stamp; never pass the manifest name through). P2 only compares stamp strings and never composes or parses them.
+
+## 2026-10-03 P1 NOTE - Kaggle FULL run (facts)
+
+Kernel version 4; one of the two T4 GPUs was used. **RF-DETR-Nano:** 100 epochs requested, early stop after about 35 epochs, best EMA epoch 24, effective mAP 0.98262 (RF-DETR's own metric), 2,787 s. **YOLO11n:** 100 epochs, 447 s, mAP50 0.995 and mAP50-95 0.974 on the then-valid 173 frames. Total 3,323 s. The kernel's output-size check (2.34 GB against a 2 GB self-imposed limit) tripped because of the per-epoch RF-DETR checkpoints. The weights were downloaded manually as `.zip` files that are the PyTorch archives themselves, and were verified by sha256 against the manifest. The two training summaries are now tracked as `reports/training/rfdetr_train_summary.json` and `reports/training/yolo11n_train_summary.json` (sha256 equal to the manifest's `training_summary_sha256`); `trained_at` is `2026-10-03`, the date of the Kaggle run log, because the summaries carry no timestamp.
+
+## 2026-10-03 P1 CORRECTION - when the detector selection rule was written down
+
+The selection rule was agreed in the project decision log and in the S-F2a agent prompt before its results existed. Git, however, shows the rule text only from commit 2271be6, which is after the valid results. The DECISION commit f0e2983 still precedes the test report commit a119ca2. So the order of record in git is: valid results and rule text (2271be6), decision (f0e2983), test report (a119ca2); the earlier agreement is not visible in git.
+
+## 2026-10-03 P1 ACCEPTED CHANGE - manifest shape differs from the original Plan 5.8 wording
+
+`weights/MANIFEST.json` carries `detectors[]` plus `active_detector` (per detector: `name`, `file`, `sha256`, `size_bytes`, `license`, `classes`, `input_size`, `detector_conf_floor`, `dataset_stamp_trained`, `dataset_stamp_evaluated`, `trained_at`, `validated_for_pipeline`, `test_evaluated`, training-summary path and sha256), not the single `detector` object and stored `model_stamp` that Plan 5.8 described. Plan 5.8 and the essential-features.md F2 line ("not a runtime switch" became "chosen at launch, never switched during a run") were updated in H0.4 of session S-G with the Lead's approval; the stamp is composed at runtime by `contracts.compose_model_stamp`.
+
+## 2026-10-03 P1 NOTE (for P2) - perception/pipeline.py has landed; harness/replay.py --video must switch to load_pipeline
+
+`perception/pipeline.py` now exists (S-G, P1.6.3). Two P2 tests in `tests/unit/harness/test_replay.py` asserted that importing `perception.pipeline` fails "until perception lands"; with the Lead's agreement, P1 changed only those two tests to stub the missing import (`monkeypatch.setitem(sys.modules, "perception.pipeline", None)`), nothing else in `harness/` or its tests. **Still P2's to do:** `harness/replay.py` `replay_from_video` calls `PerceptionPipeline(perception_config)`, which is not the real signature. The real constructor is `PerceptionPipeline(detector, hands, pose=None)`; the launch-time factory is `perception.pipeline.load_pipeline(manifest_path=..., detector=None, enable_pose=False)` (detector chosen by argument, then `SIH_DETECTOR`, then the manifest's `active_detector`). `replay --video` with a real video has therefore not been run against the real pipeline.
+
+## 2026-10-03 P1.7 DECISION - target_fps = 10
+
+**Measurement** (`python -m training.benchmark_pipeline`, `reports/benchmark_pipeline.json`; the real `PerceptionPipeline` with YOLO11n at imgsz 384 on CPU plus MediaPipe hands, frames decoded and processed one after another, 200 frames per clip after 10 warm-up frames, validation clips x015, x016, x017, Ryzen 5 5600H demo laptop; `model_stamp` yolo11n:cb9cd840|hand:fbc2a300|pose:none). Per frame, decode included: x015 median 47.3 ms / p95 51.0 ms; x016 48.1 / 60.7; x017 47.9 / 52.4. **All 600 frames: median 47.7 ms, p95 56.3 ms, mean 48.4 ms, which implies 20.9 fps at the median and 17.8 fps at the p95.** It excludes tracking, the engine, the JPEG stream and speech.
+
+**Decision: `target_fps` = 10** (the proposal). It leaves 100 ms per frame against 47.7 ms used at the median (2.1x) and 56.3 ms at the p95 (1.8x); that headroom is for the state tracker and engine (cheap pure-Python), MJPEG encoding and Flask on other threads, and the speech worker process, all on the same 6-core CPU. A 30 fps recording is decimated exactly by 3 (`every = round(29.99 / 10) = 3`). 10 is sustainable; the pipeline view also clears `min_pipeline_fps` 8 (20.9 measured, detector + hands only). Not chosen: 15 (the `RuntimeConfig` default) would give 66.7 ms per frame, only 1.4x the median and 1.2x the p95 before streaming and speech, too thin for a live demo; RF-DETR-Nano (171 to 195 ms per frame for the detector alone, measured earlier) could not reach 10 fps and would run at about 4 to 5. `hysteresis_frames` is tuned at the real rate by P2.6 and `RuntimeConfig.target_fps` is P2's to set; the caches in this session are built at 10.
+
+## 2026-10-03 P1.6/P1.7 (S-G) - pipeline, detector factory, caches
+
+**Built (branch p1-perception).** H0: `eval_detector --device auto` falls back to CPU when CUDA is absent (YOLO and RF-DETR paths, tested with a mocked `torch.cuda.is_available`); `--split test` is refused while any `reports/detector_eval_test_*.json` exists unless `--allow-repeat-test "<reason>"` (recorded in the new report); Kaggle owner is `--owner` or `KAGGLE_OWNER`, no tracked default, personal path scrubbed from `README_GPU.md`; two doc lines reworded (essential-features F2, Plan 5.8); the two training summaries tracked under `reports/training/` with sha256 equal to the manifest, `trained_at` 2026-10-03 with its note; three ISSUES entries. P1.6.1: `perception/detector.py` (`Detector` protocol; `YoloDetector` imgsz 384, floor `DETECTOR_MIN_CONF` 0.10; `RfdetrDetector`, BGR to RGB at the boundary; `load_detector(manifest_path, name)` precedence argument, then `SIH_DETECTOR`, then `active_detector`; refuses on an unknown name, missing weights, weights sha256 differing from the manifest, or manifest classes differing from `config/experiment.json` in order; WARNING when `validated_for_pipeline` is false; `import perception.detector` imports neither ultralytics nor rfdetr, asserted in a clean subprocess). P1.6.2: `training/eval_detector.py` now imports `yolo_predict`, `rfdetr_predict` and `resolve_device` from `perception.detector`, so the evaluation and the runtime share one prediction code path. P1.6.3: `perception/pipeline.py` (`PerceptionPipeline(detector, hands, pose=None)` and the launch factory `load_pipeline`); a frame-level failure is logged with its frame id and re-raised, which is what `runtime/loop.py` catches (warning, skip frame). P1.6.4: `perception/cache.py` (atomic writer, validating reader that refuses a different `model_stamp` or `fps`, resumable builder, `python -m perception.cache build`). `training/benchmark_pipeline.py` and `training/cache_report.py` (timing and the report live in training/ because perception reads no clock, rule 8).
+
+**Equivalence (P1.6.2).** On 20 valid images (every 10th of 211, YOLO11n, CPU) the new `YoloDetector` and the evaluation's original inline path (conf 0.001, imgsz 384, then filtered at 0.10) returned the same boxes, classes and confidences within 1e-4: 102 detections compared, same count on every image (`test_detector_equivalence.py`, marked slow, skips when weights or data are absent). The RF-DETR path is the same code as before, moved unchanged.
+
+**Throughput (P1.7.1)** and the `target_fps` = 10 decision are in "2026-10-03 P1.7 DECISION - target_fps = 10": 600 frames over 3 valid clips, median 47.7 ms, p95 56.3 ms per frame (decode, YOLO11n, hands, sequential), 20.9 fps at the median, 17.8 at the p95.
+
+**Caches (P1.7.2)**, `data/cache/<run_id>/perception.jsonl` (git-ignored), model_stamp `yolo11n:cb9cd840|hand:fbc2a300|pose:none`, fps 10 (every 3rd frame of the ~30 fps recordings), all 46 runs built, none failed, no frame skipped, 416.7 s wall in one background run (`reports/cache_build.json`):
+
+| split | runs | frames | seconds |
+|---|---|---|---|
+| train | 26 | 4,928 | 244.7 |
+| val | 10 | 1,691 | 84.5 |
+| test | 10 | 1,763 | 87.4 |
+| total | 46 | 8,382 | 416.7 |
+
+Per-class detection statistics, descriptive only (no labels read on test, nothing tuned): frames with a detection at or above 0.30 (share of frames) and quantiles of the best such confidence per frame (min / q25 / median / q75 / max):
+
+| class | val frames | val conf | test frames | test conf |
+|---|---|---|---|---|
+| outer_box | 1691 of 1691 (1.000) | .944 / .964 / .968 / .972 / .980 | 1763 of 1763 (1.000) | .877 / .959 / .965 / .969 / .982 |
+| tray | 1691 (1.000) | .907 / .944 / .950 / .955 / .980 | 1763 (1.000) | .865 / .941 / .947 / .952 / .976 |
+| red_box | 1687 (0.998) | .404 / .981 / .996 / .997 / 1.000 | 1760 (0.998) | .453 / .978 / .995 / .997 / 1.000 |
+| yellow_box | 1675 (0.991) | .307 / .953 / .981 / .985 / .995 | 1750 (0.993) | .306 / .939 / .976 / .984 / .994 |
+| start_button | 1691 (1.000) | .708 / .972 / .981 / .987 / .998 | 1763 (1.000) | .671 / .978 / .983 / .988 / .996 |
+
+Detections at or above 0.30 exceed frames-with-detection for red and yellow (val 1,709 red and 1,709 yellow boxes in 1,687 and 1,675 frames; test 1,789 and 1,790): some frames carry a second, lower-confidence box of the same class above the floor. The tracker takes the best one per label (Plan 5.3), but P2.6 should know.
+
+**Determinism and refusal (P1.7.3).** x015 rebuilt into a temporary folder is byte-identical to the cache (asserted in `test_cache_real.py`), and x030 rebuilt through the CLI into `data/cache_verify` has the same sha256 as `data/cache/x030` (14fce45e...); a second `build --run x001` skipped it as complete. The reader refuses the YOLO cache when the expected stamp is the RF-DETR one (`CacheMismatch`: "cache model_stamp 'yolo11n:...' != expected 'rfdetr-nano:82d9f126|...'"), and the reverse.
+
+**Optional (P1.7.4), done.** `SIH_DETECTOR=rfdetr_nano python -m perception.cache build --run x015|x016 --out-root data/cache_rfdetr` built 188 and 220 frames, stamp `rfdetr-nano:82d9f126|hand:fbc2a300|pose:none`, with the `validated_for_pipeline=false` WARNING logged; about 34 s and 40 s per run (YOLO11n about 9 s). On those two val runs every class had a detection at or above 0.30 in all 408 frames (yellow 408 vs 406 for YOLO11n), so the RF-DETR class-id handling produces valid labels end to end. This proves the toggle only; it is not an evaluation. The RF-DETR caches are not committed (data/ is git-ignored).
+
+**Quality gates.** `check.py --quick`: 1,080 passed (was 1,010); ruff clean; `check.py --status`: F1 11, F2 60, F3 34, F4 40, F5 31, F6 10, F7 22, F8 3, F9 16, F10 32, F11 7, F12 23, F13 25, F14 214 tests, all GREEN, 0 failed.
+
+**Surprises.** (1) Adding `perception/pipeline.py` turned two P2 tests red (they asserted the import fails); with the Lead's agreement P1 stubbed the import in only those two tests (see the P2 NOTE above); `harness/replay.py --video` still calls the old constructor and is P2's to fix. (2) `PerceptionConfig`, `target_fps` and the harness replay were not touched. (3) The repo holds 46 runs; Plan G3 says "all 77 runs".
+
+**G3 checklist.** MET and checked this session: detector chosen and stamped (YOLO11n active, stamp label in `compose_model_stamp`, `weights/MANIFEST.json` hashes verified at load); real `PerceptionPipeline` (built, 12 + 19 + 23 unit tests, and run on real video); caches for every run (46 of 46, train, val and test, at 10 fps); F1, F2, F3, F14 rows green (and F4 to F13). NOT re-verified here, taken from the earlier ISSUES entries (P1.1 to P1.5, PR #15) rather than checked in this session: all runs validated, static boxes reviewed for every run, dataset reviewed within the bad-label gate, gold subsets of val and test hand-verified (the test report used 80 gold frames). NOT met or open: the Plan's "77 runs" versus 46 recorded; replay of the caches through the tracker and engine (P2.6) and the harness `--video` path.
+
+**NOT done.** RF-DETR full caches, tuning and replay; the dependency regrouping (ultralytics stays an optional group); the frontend toggle (none, by design); P2.6 threshold tuning; the harness `replay --video` switch to `load_pipeline`; pose (off, no pose model in the manifest). No network, download or install; test labels were never read.
