@@ -5,6 +5,11 @@
   python -m training.review_sheet --static   # one frame per run (all runs), static boxes only,
                                              # + pre-filled data/review/static_review.csv
   python -m training.review_sheet --outcome  # review outcome (gate numbers) -> reports/dataset.json
+  python -m training.review_sheet --fresh-sample [--n 60]
+                                             # Stage 4b: fresh TRAIN sample from the BUILT dataset
+                                             # (overlay applied): fresh_sheet_NN.jpg,
+                                             # fresh_sample.json, prefilled fresh_review.csv
+  python -m training.review_sheet --fresh-outcome   # strict-load fresh_review.csv, print the gate
   python -m training.review_sheet --edit --split <s> [--gold [N]] [--static] [--only-sample]
                                              # the label editor page data/review/editor_<s>.html
 
@@ -35,9 +40,15 @@ REVIEW_DIR = Path("data/review")
 LABEL_REVIEW_PATH = Path("data/label_review.csv")
 STATIC_REVIEW_PATH = REVIEW_DIR / "static_review.csv"
 SAMPLE_PATH = REVIEW_DIR / "sample.json"
+FRESH_SAMPLE_PATH = REVIEW_DIR / "fresh_sample.json"
+FRESH_REVIEW_PATH = REVIEW_DIR / "fresh_review.csv"
+BUILT_TRAIN_DIR = Path("data/dataset/train")
+CORRECTIONS_TRAIN_PATH = Path("data/corrections/train.json")
 FRAME_LABELS_PATH = Path("data/labels/frame_labels.json")
 
 SEED = 20261002
+FRESH_SEED = 20261003  # a new recorded seed for the Stage 4b fresh sample
+N_FRESH = 60
 N_STRATIFIED = 60
 PER_RUN_MIN = 2
 N_FLAGGED = 20
@@ -74,9 +85,9 @@ class ReviewCsvError(ValueError):
 def draw_review_sample(
     index: dict[str, dict], n: int, per_run_min: int, seed: int
 ) -> list[tuple[str, int]]:
-    """Seeded draw of ``n`` (run_id, frame_id) cells from TRAIN runs: first
-    ``per_run_min`` frames of every train run, then the rest from the other
-    train frames. Sorted."""
+    """Seeded draw of ``n`` (run_id, frame_id) cells from TRAIN runs: ``per_run_min``
+    frames of every train run, each picked at random (``random.Random(seed).sample``,
+    not the first ones), then the rest at random from the other train frames. Sorted."""
     runs = sorted(r for r, info in index.items() if info["split"] == "train")
     if n < per_run_min * len(runs):
         raise ValueError(f"n={n} is below {per_run_min} frames x {len(runs)} runs")
@@ -92,6 +103,38 @@ def draw_review_sample(
         raise ValueError(f"only {len(chosen) + len(pool)} train frames, need {n}")
     chosen += rng.sample(pool, extra)
     return sorted(chosen)
+
+
+def draw_fresh_sample(
+    frames_by_run: dict[str, list[int]],
+    exclude: set[tuple[str, int]],
+    n: int,
+    per_run_min: int,
+    seed: int,
+) -> list[tuple[str, int]]:
+    """Fresh draw of ``n`` cells from the built train frames, none in ``exclude`` (the earlier
+    review sample), at least ``per_run_min`` per run where the run has that many left
+    (``draw_review_sample`` on the remaining frames). Sorted."""
+    left = {
+        run: {"split": "train", "frame_ids": [f for f in ids if (run, f) not in exclude]}
+        for run, ids in frames_by_run.items()
+    }
+    return draw_review_sample(left, n, per_run_min, seed)
+
+
+def coco_boxes_by_frame(coco: dict) -> dict[tuple[str, int], dict[str, tuple[float, ...]]]:
+    """(run, frame) -> {class: xyxy} from a COCO dict (xywh boxes), classes in category order."""
+    name_of = {c["id"]: c["name"] for c in coco["categories"]}
+    order = [c["name"] for c in coco["categories"]]
+    cell_of = {}
+    for img in coco["images"]:
+        run, _, fid = img["file_name"][:-4].rpartition("_")
+        cell_of[img["id"]] = (run, int(fid))
+    out: dict[tuple[str, int], dict[str, tuple[float, ...]]] = {c: {} for c in cell_of.values()}
+    for a in coco["annotations"]:
+        x, y, w, h = a["bbox"]
+        out[cell_of[a["image_id"]]][name_of[a["category_id"]]] = (x, y, x + w, y + h)
+    return {cell: {c: boxes[c] for c in order if c in boxes} for cell, boxes in out.items()}
 
 
 def pick_flagged(
@@ -308,6 +351,16 @@ def bad_fractions(
 
 def _gate(per_class: dict[str, dict]) -> bool:
     return all(v["passes"] for v in per_class.values())
+
+
+def fresh_outcome(rows: list[ReviewRow], classes: list[str], cells: list[tuple[str, int]]) -> dict:
+    """The Stage 4b gate on the fresh sample: ``bad_fractions`` (hidden-and-missing not
+    counted, limit ``GATE_MAX_BAD_FRACTION`` per class) over the sampled frames."""
+    in_sample = set(cells)
+    per_class = bad_fractions(
+        [r for r in rows if (r.run_id, r.frame_id) in in_sample], classes, n_frames=len(cells)
+    )
+    return {"n_frames": len(cells), "per_class": per_class, "gate_passes": _gate(per_class)}
 
 
 def _kept_gate(
@@ -533,6 +586,74 @@ def cmd_outcome() -> None:
     print(json.dumps(out, indent=1))
 
 
+def cmd_fresh_sample(n: int) -> None:
+    coco = json.loads((BUILT_TRAIN_DIR / "_annotations.coco.json").read_text(encoding="utf-8"))
+    boxes = coco_boxes_by_frame(coco)
+    frames_by_run: dict[str, list[int]] = {}
+    for run, fid in sorted(boxes):
+        frames_by_run.setdefault(run, []).append(fid)
+    old = json.loads(SAMPLE_PATH.read_text(encoding="utf-8"))
+    exclude = {(r, int(f)) for r, f in old["cells"]}
+    cells = draw_fresh_sample(frames_by_run, exclude, n, PER_RUN_MIN, FRESH_SEED)
+    overlay_names: set[str] = set()
+    if CORRECTIONS_TRAIN_PATH.exists():
+        entries = json.loads(CORRECTIONS_TRAIN_PATH.read_text(encoding="utf-8")).get("frames", {})
+        overlay_names = {k for k, e in entries.items() if not e.get("excluded")}
+    corrected = [c for c in cells if f"{c[0]}_{c[1]}.jpg" in overlay_names]
+    classes = [c["name"] for c in coco["categories"]]
+    tiles = [
+        (f"{run}#{fid}", cv2.imread(str(BUILT_TRAIN_DIR / f"{run}_{fid}.jpg")), boxes[(run, fid)])
+        for run, fid in cells
+    ]
+    REVIEW_DIR.mkdir(parents=True, exist_ok=True)
+    for stale in REVIEW_DIR.glob("fresh_sheet_*.jpg"):
+        stale.unlink()
+    sheets = render_sheets(tiles, classes)
+    for i, sheet in enumerate(sheets, start=1):
+        cv2.imwrite(str(REVIEW_DIR / f"fresh_sheet_{i:02d}.jpg"), sheet)
+    per_run = {r: sum(1 for c in cells if c[0] == r) for r in sorted({c[0] for c in cells})}
+    FRESH_SAMPLE_PATH.write_text(
+        json.dumps(
+            {
+                "seed": FRESH_SEED,
+                "n": len(cells),
+                "per_run_min": PER_RUN_MIN,
+                "source": "data/dataset/train (built, overlay applied)",
+                "excluded_earlier_sample": len(exclude),
+                "n_overlay_corrected": len(corrected),
+                "overlay_corrected": [list(c) for c in corrected],
+                "frames_per_run": per_run,
+                "cells": [list(c) for c in cells],
+            },
+            indent=1,
+        ),
+        encoding="utf-8",
+    )
+    print(
+        f"fresh sample: {len(cells)} frames ({len(corrected)} overlay-corrected), "
+        f"{len(per_run)} runs, min {min(per_run.values())} max {max(per_run.values())} per run "
+        f"-> {len(sheets)} sheets in {REVIEW_DIR}"
+    )
+    if FRESH_REVIEW_PATH.exists():
+        print(f"{FRESH_REVIEW_PATH} exists; not overwritten")
+    else:
+        found = {c: set(boxes[c]) for c in cells}
+        write_review_csv(FRESH_REVIEW_PATH, prefill_rows(cells, classes, found))
+        print(f"wrote {FRESH_REVIEW_PATH} ({len(cells) * len(classes)} rows, all verdict=ok)")
+
+
+def cmd_fresh_outcome() -> None:
+    meta = json.loads(FRESH_SAMPLE_PATH.read_text(encoding="utf-8"))
+    cells = [(r, int(f)) for r, f in meta["cells"]]
+    classes = _classes()
+    keys = {(r, f, c) for r, f in cells for c in classes}
+    rows = load_label_review(FRESH_REVIEW_PATH, classes, keys)
+    missing = keys - {(r.run_id, r.frame_id, r.cls) for r in rows}
+    if missing:
+        raise SystemExit(f"{len(missing)} rows are missing, e.g. {sorted(missing)[:3]}")
+    print(json.dumps(fresh_outcome(rows, classes, cells), indent=1))
+
+
 def cmd_edit(split: str, gold: int | None, static: bool, only_sample: bool) -> None:
     from training.label_editor.build import generate_editor
 
@@ -566,6 +687,13 @@ def main(argv: list[str] | None = None) -> None:
         "--outcome", action="store_true", help="record the review outcome in reports/dataset.json"
     )
     g.add_argument("--edit", action="store_true", help="generate the label editor page")
+    g.add_argument(
+        "--fresh-sample", action="store_true", help="Stage 4b: fresh review sample, built dataset"
+    )
+    g.add_argument(
+        "--fresh-outcome", action="store_true", help="gate numbers of data/review/fresh_review.csv"
+    )
+    ap.add_argument("--n", type=int, default=N_FRESH, help="with --fresh-sample")
     ap.add_argument(
         "--static",
         action="store_true",
@@ -591,6 +719,10 @@ def main(argv: list[str] | None = None) -> None:
         if not args.split:
             ap.error("--edit needs --split")
         cmd_edit(args.split, args.gold, args.static, args.only_sample)
+    elif args.fresh_sample:
+        cmd_fresh_sample(args.n)
+    elif args.fresh_outcome:
+        cmd_fresh_outcome()
     elif args.static and (args.sample or args.outcome):
         ap.error("--static combines only with --edit")
     elif args.sample:
