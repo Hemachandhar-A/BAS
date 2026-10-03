@@ -2,6 +2,7 @@
 
   python -m training.kaggle_pack [--out data/kaggle_upload] [--username hemachandhara]
         [--rfdetr-weights PATH] [--yolo-weights PATH] [--allow-dirty]
+  python -m training.kaggle_pack --kernel-only [--out data/kaggle_upload]
   python -m training.kaggle_pack --set-mode FULL [--out data/kaggle_upload]
   python -m training.kaggle_pack --print-commands [--out data/kaggle_upload]
 
@@ -31,6 +32,7 @@ import re
 import shutil
 import subprocess
 import sys
+import tempfile
 import zipfile
 from pathlib import Path
 
@@ -362,36 +364,49 @@ def _listing(out: Path) -> dict:
 
 NEEDS_YES = "needs the Lead's explicit yes (network)"
 KAGGLE = "uv tool run kaggle"
+# the kernel runs nothing from these paths of code.zip, so a change there is not a reason to
+# upload a new version of the code dataset
+NOT_RUN_BY_KERNEL = ("training/kaggle/", "training/kaggle_pack.py")
 
 
 def commands(user: str, out: Path) -> list[tuple[str, str]]:
-    """(label, command) in the order the Lead runs them; every one needs the Lead's yes."""
+    """(label, command) in the order the Lead runs them; every one needs the Lead's yes.
+    The Kaggle commands are run from inside ``out`` with slash-free paths (a path with
+    slashes fails with the Kaggle CLI on Windows); only step 6 runs from the repo root."""
     o = Path(out).as_posix()
     kernel = f"{user}/{KERNEL_SLUG}"
     return [
-        ("1. create the private dataset", f"{KAGGLE} datasets create -p {o}/dataset"),
-        ("2. create the private code dataset", f"{KAGGLE} datasets create -p {o}/code"),
-        ("3. push the kernel in SMOKE mode", f"{KAGGLE} kernels push -p {o}/kernel"),
+        ("1. create the private dataset", f"{KAGGLE} datasets create -p dataset"),
+        ("2. create the private code dataset", f"{KAGGLE} datasets create -p code"),
+        ("3. push the kernel in SMOKE mode", f"{KAGGLE} kernels push -p kernel"),
         (
             "4. kernel status (repeat until it says complete or error)",
             f"{KAGGLE} kernels status {kernel}",
         ),
-        ("5. download the smoke output", f"{KAGGLE} kernels output {kernel} -p {o}/smoke_output"),
+        ("5. download the smoke output", f"{KAGGLE} kernels output {kernel} -p smoke_output"),
         (
-            "6. switch the kernel script to FULL (local edit, no network)",
+            "6. switch the kernel script to FULL (local edit, no network; from the repo root)",
             f"python -m training.kaggle_pack --set-mode FULL --out {o}",
         ),
-        ("7. push again in FULL mode", f"{KAGGLE} kernels push -p {o}/kernel"),
+        ("7. push again in FULL mode", f"{KAGGLE} kernels push -p kernel"),
         ("8. kernel status", f"{KAGGLE} kernels status {kernel}"),
-        ("9. download the training output", f"{KAGGLE} kernels output {kernel} -p {o}/full_output"),
+        ("9. download the training output", f"{KAGGLE} kernels output {kernel} -p full_output"),
     ]
+
+
+def version_command(message: str) -> str:
+    """The command for a new VERSION of the already uploaded code dataset (run from ``out``)."""
+    return f'{KAGGLE} datasets version -p code -m "{message.replace(chr(34), chr(39))}"'
 
 
 def commands_markdown(user: str, out: Path) -> str:
     lines = [
         "# Kaggle commands (prepared, NOT run)",
         "",
-        "Every step is marked; all but the local edit in step 6 contact Kaggle.",
+        "Every step is marked; all but the local edit in step 6 contact Kaggle. Run the Kaggle "
+        f"commands from inside the upload folder (`cd {Path(out).as_posix()}`) with the "
+        "slash-free paths shown: a path with slashes fails with the Kaggle CLI on Windows. "
+        "Step 6 runs from the repo root.",
         "",
     ]
     for label, cmd in commands(user, out):
@@ -400,13 +415,114 @@ def commands_markdown(user: str, out: Path) -> str:
     lines += [
         "If the pushed kernel lands on a P100: open the kernel on kaggle.com, "
         "Settings (right side panel), Accelerator, choose GPU T4 x2 (or GPU T4), save, "
-        "then Run again.",
+        "then Run again. The kernel uses one of the two T4s by design.",
         "",
     ]
     return "\n".join(lines)
 
 
+# --- kernel-only re-pack ------------------------------------------------------------------
+
+
+def code_zip_drift(
+    repo: Path, code_manifest: dict, paths: tuple[str, ...] = CODE_PATHS
+) -> list[str]:
+    """Paths whose content in a fresh ``git archive HEAD`` differs from the uploaded code.zip
+    (added, removed or changed), judged by the file hashes in its manifest."""
+    with tempfile.TemporaryDirectory() as t:
+        fresh_zip = Path(t) / "fresh.zip"
+        git_archive(repo, fresh_zip, paths)
+        fresh = zip_file_hashes(fresh_zip)
+    old = code_manifest["files"]
+    return sorted(p for p in set(fresh) | set(old) if fresh.get(p) != old.get(p))
+
+
+def functional_drift(paths: list[str]) -> list[str]:
+    """The drift that matters to a kernel run: paths of code.zip the kernel actually uses."""
+    return [p for p in paths if not p.startswith(NOT_RUN_BY_KERNEL)]
+
+
+def repack_kernel(out: Path, *, user: str = USERNAME) -> dict:
+    """Regenerate only ``out/kernel`` (the script in SMOKE mode and kernel-metadata.json) from
+    the manifests of the datasets already packed in ``out``, and refresh the file listing in
+    package_manifest.json. dataset/ and code/ are read, never written; their zips and weights
+    must still match their manifests, so the sha256s baked into the script are the uploaded
+    ones."""
+    out = Path(out)
+    ds_path = out / "dataset" / "dataset_manifest.json"
+    code_path = out / "code" / "code_manifest.json"
+    pm_path = out / "package_manifest.json"
+    if not (ds_path.is_file() and code_path.is_file() and pm_path.is_file()):
+        raise PackError(f"{out} has no packed datasets and manifests; pack first")
+    ds = json.loads(ds_path.read_text(encoding="utf-8"))
+    code = json.loads(code_path.read_text(encoding="utf-8"))
+    checks = [
+        (out / "dataset" / ds["zip"]["name"], ds["zip"]["sha256"]),
+        (out / "code" / code["zip"]["name"], code["zip"]["sha256"]),
+        *[(out / "code" / n, m["sha256"]) for n, m in code["weights"].items()],
+    ]
+    for path, sha in checks:
+        if not path.is_file() or sha256_file(path) != sha:
+            raise PackError(f"{path.name} is missing or does not match its manifest")
+    package = {
+        "dataset_zip_sha256": ds["zip"]["sha256"],
+        "code_zip_sha256": code["zip"]["sha256"],
+        "dataset_stamp": ds["dataset_stamp"],
+        "n_train": ds["images"]["train"],
+        "n_valid": ds["images"]["valid"],
+        "n_test": ds["images"]["test"],
+        "git_commit": code["git_commit"],
+        "weights": {n: m["sha256"] for n, m in code["weights"].items()},
+    }
+    template = Path(__file__).with_name("kaggle") / "run_training.py"
+    script = set_mode(inject_package(template.read_text(encoding="utf-8"), package), "SMOKE")
+    (out / "kernel").mkdir(parents=True, exist_ok=True)
+    (out / "kernel" / "run_training.py").write_text(script, encoding="utf-8", newline="\n")
+    (out / "kernel" / "kernel-metadata.json").write_text(
+        json.dumps(kernel_metadata(user), indent=1), encoding="utf-8"
+    )
+    problems = secret_problems(out / "kernel")
+    if problems:
+        raise PackError("credential-looking content in the kernel:\n  " + "\n  ".join(problems))
+    manifest = json.loads(pm_path.read_text(encoding="utf-8"))
+    manifest["files"] = _listing(out)
+    pm_path.write_text(json.dumps(manifest, indent=1), encoding="utf-8")
+    (out / "COMMANDS.md").write_text(commands_markdown(user, out), encoding="utf-8")
+    return manifest
+
+
 # --- CLI ----------------------------------------------------------------------------------
+
+
+def kernel_only(args: argparse.Namespace) -> int:
+    try:
+        manifest = repack_kernel(args.out, user=args.username)
+    except PackError as e:
+        print(f"cannot re-pack the kernel: {e}", file=sys.stderr)
+        return 2
+    k = manifest["files"]["kernel/run_training.py"]
+    print(f"kernel/run_training.py  {k['size_bytes']} bytes  sha256 {k['sha256']}  (MODE SMOKE)")
+    code = json.loads((args.out / "code" / "code_manifest.json").read_text(encoding="utf-8"))
+    try:
+        drift = code_zip_drift(Path.cwd(), code)
+    except PackError as e:
+        drift = None
+        print(f"could not compare code.zip with HEAD: {e}")
+    if drift is not None:
+        matters = functional_drift(drift)
+        print(f"code.zip vs HEAD: {len(drift)} paths differ, {len(matters)} that the kernel runs")
+        for p in matters:
+            print(f"  changed: {p}")
+        if matters:
+            print("The code dataset must be re-uploaded as a new VERSION, from the upload folder:")
+            print("  " + version_command("code changed: " + ", ".join(matters[:6])))
+        else:
+            print("code.zip is unchanged for the kernel's purposes: only the kernel is pushed.")
+    print("Push the kernel from the upload folder, with a slash-free path:")
+    print(f"  cd {Path(args.out).as_posix()}")
+    print(f"  {KAGGLE} kernels push -p kernel")
+    print("\nNothing was uploaded.")
+    return 0
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -418,6 +534,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--allow-dirty", action="store_true")
     g = ap.add_mutually_exclusive_group()
     g.add_argument("--set-mode", choices=("SMOKE", "FULL"))
+    g.add_argument("--kernel-only", action="store_true")
     g.add_argument("--print-commands", action="store_true")
     args = ap.parse_args(argv)
 
@@ -436,6 +553,8 @@ def main(argv: list[str] | None = None) -> int:
     if args.print_commands:
         print(commands_markdown(args.username, args.out))
         return 0
+    if args.kernel_only:
+        return kernel_only(args)
 
     from training import gpu_preflight as gp
 

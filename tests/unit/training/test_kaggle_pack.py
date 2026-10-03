@@ -164,9 +164,9 @@ def test_git_archive_of_a_missing_path_is_a_pack_error(tmp_path):
 def test_commands_are_in_order_all_network_except_the_local_mode_switch():
     cmds = K.commands("hemachandhara", Path("data/kaggle_upload"))
     text = [c for _, c in cmds]
-    assert text[0].startswith("uv tool run kaggle datasets create -p data/kaggle_upload/dataset")
-    assert text[1].startswith("uv tool run kaggle datasets create -p data/kaggle_upload/code")
-    assert text[2].startswith("uv tool run kaggle kernels push -p data/kaggle_upload/kernel")
+    assert text[0].startswith("uv tool run kaggle datasets create -p dataset")
+    assert text[1].startswith("uv tool run kaggle datasets create -p code")
+    assert text[2].startswith("uv tool run kaggle kernels push -p kernel")
     assert "kernels status hemachandhara/sih26174-train" in text[3]
     assert "kernels output hemachandhara/sih26174-train" in text[4]
     assert "--set-mode FULL" in text[5] and not text[5].startswith("uv tool run kaggle")
