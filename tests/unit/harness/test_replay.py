@@ -99,8 +99,10 @@ def test_replay_from_cache_rejects_a_cache_built_for_a_different_experiment(
 
 
 def test_replay_from_video_raises_import_error_until_perception_lands(
-    experiment: ExperimentDefinition, tmp_path: Path
+    experiment: ExperimentDefinition, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    # perception/pipeline.py has landed (P1.6); stub its absence so the path stays tested
+    monkeypatch.setitem(sys.modules, "perception.pipeline", None)
     with pytest.raises(ImportError):
         replay_from_video(experiment, tmp_path / "does_not_matter.mp4", log_dir=tmp_path)
 
@@ -223,8 +225,9 @@ def test_cli_script_mode_prints_replay_result_json(
 
 
 def test_cli_video_mode_reports_a_clean_error_when_perception_is_missing(
-    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    monkeypatch.setitem(sys.modules, "perception.pipeline", None)  # see the test above
     rc = main(["--video", str(tmp_path / "nope.mp4"), "--experiment", str(FIXTURE_PATH)])
     assert rc == 1
     assert "perception/" in capsys.readouterr().err
