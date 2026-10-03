@@ -34,6 +34,9 @@ from pathlib import Path
 from typing import Any
 
 import numpy as np
+import yaml
+
+from training.autolabel import MOVABLE_CLASSES, _intersects
 
 REPORT_VERSION = 1
 MAP_CONF_FLOOR = 0.001
@@ -179,6 +182,116 @@ def evaluate_subset(
     return result
 
 
+def _parse_frame_name(name: str) -> tuple[str, int] | None:
+    """``<run>_<frame id>.jpg`` -> (run, frame id); None for any other name."""
+    stem = name[:-4] if name.endswith(".jpg") else name
+    run, _, fid = stem.rpartition("_")
+    return (run, int(fid)) if run and fid.isdigit() else None
+
+
+def split_by_hand(
+    gt: dict[str, tuple[np.ndarray, np.ndarray]],
+    hands: dict[tuple[str, int], list[tuple[float, ...]]],
+    files: set[str],
+    classes: list[str],
+) -> tuple[set[str], set[str], set[str]]:
+    """(hand over a container, hand elsewhere, no hand data) for the frames in ``files``. The
+    first group is build_dataset's ``with_hand_over_container``: a hand box intersects a ground
+    truth red or yellow box. A frame without a hand record is never guessed into either group."""
+    movable = {classes.index(c) for c in MOVABLE_CLASSES}
+    over: set[str] = set()
+    away: set[str] = set()
+    none: set[str] = set()
+    for name in sorted(set(files) & set(gt)):
+        key = _parse_frame_name(name)
+        if key is None or key not in hands:
+            none.add(name)
+            continue
+        xyxy, cls = gt[name]
+        boxes = [tuple(b) for b, c in zip(xyxy, cls, strict=True) if int(c) in movable]
+        hit = any(_intersects(h, b) for h in hands[key] for b in boxes)
+        (over if hit else away).add(name)
+    return over, away, none
+
+
+def red_yellow_confusion(
+    gt: dict[str, tuple[np.ndarray, np.ndarray]],
+    pred: dict[str, tuple[np.ndarray, np.ndarray, np.ndarray]],
+    files: set[str],
+    classes: list[str],
+    floor: float,
+) -> dict[str, dict[str, int]]:
+    """For every ground-truth red and yellow box: the class of the best-IoU (>= 0.5) prediction
+    at or above ``floor``, or ``missed``. Rows are the true class, columns what was predicted."""
+    import supervision as sv
+
+    out = {
+        c: {"red_box": 0, "yellow_box": 0, "other_class": 0, "missed": 0} for c in MOVABLE_CLASSES
+    }
+    ids = {classes.index(c): c for c in MOVABLE_CLASSES}
+    for name in sorted(set(files) & set(gt)):
+        gxyxy, gcls = gt[name]
+        pxyxy, pconf, pcls = pred[name]
+        keep = pconf >= floor
+        pxyxy, pcls = pxyxy[keep], pcls[keep]
+        for i, c in enumerate(gcls):
+            if int(c) not in ids:
+                continue
+            row = out[ids[int(c)]]
+            if len(pxyxy) == 0:
+                row["missed"] += 1
+                continue
+            iou = sv.box_iou_batch(np.asarray(gxyxy[i : i + 1], float), pxyxy)[0]
+            j = int(np.argmax(iou))
+            if iou[j] < 0.5:
+                row["missed"] += 1
+            else:
+                row[
+                    ids.get(int(pcls[j]), "other_class") if int(pcls[j]) in ids else "other_class"
+                ] += 1
+    return out
+
+
+def eligibility(report: dict, min_recall: float, min_map50: float) -> dict[str, Any]:
+    """Pre-registered rule (1): every class recall >= ``min_recall`` and mAP50 >= ``min_map50``
+    on the gold subset. A missing number fails; it never passes."""
+    gold = report["subsets"]["gold"]
+    classes = {}
+    for c, m in gold["per_class"].items():
+        r = m["recall"]
+        classes[c] = {
+            "recall": r,
+            "threshold": min_recall,
+            "pass": r is not None and r >= min_recall,
+        }
+    mp = gold["map50"]
+    map_row = {"map50": mp, "threshold": min_map50, "pass": mp is not None and mp >= min_map50}
+    return {
+        "classes": classes,
+        "map50": map_row,
+        "eligible": all(r["pass"] for r in classes.values()) and map_row["pass"],
+    }
+
+
+def eligibility_table(name: str, e: dict[str, Any]) -> str:
+    def f(v: float | None) -> str:
+        return "n/a" if v is None else f"{v:.4f}"
+
+    lines = [
+        f"{name}: rule (1) on the gold subset",
+        f"  {'check':<14}{'value':>8}{'needs':>8}  result",
+    ]
+    for c, r in e["classes"].items():
+        verdict = "PASS" if r["pass"] else "FAIL"
+        lines.append(f"  {'recall ' + c:<14}{f(r['recall']):>8}{r['threshold']:>8}  {verdict}")
+    m = e["map50"]
+    lines.append(
+        f"  {'mAP50':<14}{f(m['map50']):>8}{m['threshold']:>8}  {'PASS' if m['pass'] else 'FAIL'}"
+    )
+    lines.append(f"  => {'ELIGIBLE' if e['eligible'] else 'NOT ELIGIBLE'}")
+    return "\n".join(lines)
+
+
 def build_report(
     *,
     gt: dict,
@@ -192,6 +305,7 @@ def build_report(
     dataset_stamp: str | None,
     generated_at: str,
     acceptance_sha256: str | None,
+    hands: dict[tuple[str, int], list[tuple[float, ...]]] | None = None,
 ) -> dict[str, Any]:
     all_sub = evaluate_subset(gt, pred, set(gt), classes, floor)
     gold_sub = evaluate_subset(gt, pred, gold, classes, floor)
@@ -202,6 +316,19 @@ def build_report(
         if gold_sub["n_images"]
         else "no verified gold frames in this split: nothing to report here"
     )
+    all_sub["red_yellow_confusion"] = red_yellow_confusion(gt, pred, set(gt), classes, floor)
+    gold_sub["red_yellow_confusion"] = red_yellow_confusion(gt, pred, gold, classes, floor)
+    if hands is not None:
+        groups = dict(
+            zip(
+                ("with_hand_over_container", "hand_away", "no_hand_data"),
+                split_by_hand(gt, hands, gold, classes),
+                strict=True,
+            )
+        )
+        gold_sub["by_hand"] = {
+            k: evaluate_subset(gt, pred, files, classes, floor) for k, files in groups.items()
+        }
     return {
         "version": REPORT_VERSION,
         "generated_at": generated_at,
@@ -310,7 +437,7 @@ def main(argv: list[str] | None = None) -> int:
 
     import cv2
 
-    from training.autolabel import load_classes
+    from training.autolabel import _hands_cache, load_classes
     from training.finetune import read_dataset_stamp
 
     classes = load_classes(args.config)
@@ -350,7 +477,16 @@ def main(argv: list[str] | None = None) -> int:
         dataset_stamp=read_dataset_stamp(args.dataset_report),
         generated_at=datetime.now().isoformat(timespec="seconds"),
         acceptance_sha256=acceptance_sha,
+        hands=_hands_cache(),
     )
+    acc_text = args.acceptance.read_text(encoding="utf-8") if acceptance_sha else ""
+    acc = yaml.safe_load(acc_text) or {}
+    det = acc.get("detector", {})
+    if "min_recall_per_class" in det and "min_map50" in det:
+        report["eligibility"] = eligibility(
+            report, float(det["min_recall_per_class"]), float(det["min_map50"])
+        )
+        print(eligibility_table(args.model, report["eligibility"]), file=sys.stderr)
     args.out.parent.mkdir(parents=True, exist_ok=True)
     args.out.write_text(json.dumps(report, indent=1), encoding="utf-8")
     print(json.dumps(report, indent=1))

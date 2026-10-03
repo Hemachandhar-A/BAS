@@ -301,3 +301,103 @@ def test_rfdetr_predictor_returns_arrays_in_the_expected_shape():
     assert xyxy.ndim == 2 and xyxy.shape[1] == 4
     assert len(xyxy) == len(conf) == len(cls)
     assert cls.size == 0 or (cls.min() >= 0 and cls.max() < 5)
+
+
+# --- hand-over-container split, red/yellow confusion, rule-1 eligibility ----------------------
+
+RED, YELLOW = 2, 3
+
+
+def test_split_by_hand_puts_frames_in_three_groups_and_never_guesses():
+    gt = {
+        "runA_000001.jpg": _gt([(A, RED)]),  # hand intersects the red box
+        "runA_000002.jpg": _gt([(A, RED)]),  # hand far away
+        "runA_000003.jpg": _gt([(A, RED)]),  # no hand record at all
+        "runA_000004.jpg": _gt([(A, 0)]),  # hand intersects only a static box: not a container
+        "odd name.jpg": _gt([(A, RED)]),  # unparseable name: no hand data
+    }
+    hands = {
+        ("runA", 1): [(5.0, 5.0, 15.0, 15.0)],
+        ("runA", 2): [tuple(FAR)],
+        ("runA", 4): [(5.0, 5.0, 15.0, 15.0)],
+    }
+    over, away, none = ev.split_by_hand(gt, hands, set(gt), CLASSES)
+    assert over == {"runA_000001.jpg"}
+    assert away == {"runA_000002.jpg", "runA_000004.jpg"}
+    assert none == {"runA_000003.jpg", "odd name.jpg"}
+
+
+def test_split_by_hand_respects_the_subset():
+    gt = {"r_000001.jpg": _gt([(A, RED)]), "r_000002.jpg": _gt([(A, RED)])}
+    hands = {("r", 1): [(5.0, 5.0, 15.0, 15.0)], ("r", 2): [(5.0, 5.0, 15.0, 15.0)]}
+    over, away, none = ev.split_by_hand(gt, hands, {"r_000002.jpg"}, CLASSES)
+    assert (over, away, none) == ({"r_000002.jpg"}, set(), set())
+
+
+def test_red_yellow_confusion_counts_each_ground_truth_box_once():
+    gt = {
+        "a.jpg": _gt([(A, RED), (B, YELLOW)]),
+        "b.jpg": _gt([(A, RED), (B, YELLOW)]),
+        "c.jpg": _gt([(A, RED)]),
+        "d.jpg": _gt([(A, 0)]),  # not red or yellow: ignored
+    }
+    pred = {
+        "a.jpg": _pred([(A, 0.9, RED), (B, 0.9, YELLOW)]),  # both right
+        "b.jpg": _pred([(A, 0.9, YELLOW), (B, 0.2, YELLOW)]),  # red->yellow; yellow under floor
+        "c.jpg": _pred([(FAR, 0.9, RED)]),  # nothing overlaps
+        "d.jpg": _pred([(A, 0.9, RED)]),
+    }
+    r = ev.red_yellow_confusion(gt, pred, set(gt), CLASSES, floor=0.3)
+    assert r["red_box"] == {"red_box": 1, "yellow_box": 1, "other_class": 0, "missed": 1}
+    assert r["yellow_box"] == {"red_box": 0, "yellow_box": 1, "other_class": 0, "missed": 1}
+
+
+def test_red_yellow_confusion_takes_the_best_overlapping_prediction():
+    gt = {"a.jpg": _gt([(A, RED)])}
+    pred = {"a.jpg": _pred([([0, 0, 10, 6], 0.99, YELLOW), (A, 0.5, RED)])}
+    r = ev.red_yellow_confusion(gt, pred, set(gt), CLASSES, floor=0.3)
+    assert r["red_box"]["red_box"] == 1  # IoU decides, not confidence
+
+
+def _report_with(recall, map50, n_gt=10):
+    per = {c: {"recall": recall.get(c), "precision": 0.9, "n_gt": n_gt} for c in CLASSES}
+    return {"subsets": {"gold": {"n_images": 5, "map50": map50, "per_class": per}}}
+
+
+def test_eligibility_passes_when_every_class_meets_both_thresholds():
+    rep = _report_with({c: 0.9 for c in CLASSES}, 0.95)
+    e = ev.eligibility(rep, min_recall=0.85, min_map50=0.80)
+    assert e["eligible"] is True
+    assert all(row["pass"] for row in e["classes"].values()) and e["map50"]["pass"]
+
+
+def test_eligibility_one_weak_class_fails_the_whole_model_and_equal_passes():
+    rec = {c: 0.85 for c in CLASSES}
+    rec["red_box"] = 0.84
+    e = ev.eligibility(_report_with(rec, 0.80), min_recall=0.85, min_map50=0.80)
+    assert e["eligible"] is False
+    assert e["classes"]["red_box"]["pass"] is False and e["classes"]["tray"]["pass"] is True
+    assert e["map50"]["pass"] is True  # >= is inclusive
+
+
+def test_eligibility_missing_numbers_fail_never_pass():
+    e = ev.eligibility(_report_with({"tray": 1.0}, None), min_recall=0.85, min_map50=0.80)
+    assert e["eligible"] is False and e["map50"]["pass"] is False
+    assert e["classes"]["outer_box"]["pass"] is False
+
+
+def test_report_carries_hand_split_and_confusion_when_hands_are_given():
+    gt = {"r_000001.jpg": _gt([(A, RED)]), "r_000002.jpg": _gt([(A, RED)])}
+    pred = {n: _pred([(A, 0.9, RED)]) for n in gt}
+    hands = {("r", 1): [(5.0, 5.0, 15.0, 15.0)]}
+    rep = ev.build_report(
+        gt=gt, pred=pred, gold=set(gt), classes=CLASSES, floor=0.3, model="rfdetr",
+        split="valid", weights_sha256="x", dataset_stamp="s", generated_at="t",
+        acceptance_sha256=None, hands=hands,
+    )  # fmt: skip
+    hs = rep["subsets"]["gold"]["by_hand"]
+    assert hs["with_hand_over_container"]["n_images"] == 1
+    assert hs["no_hand_data"]["n_images"] == 1 and hs["hand_away"]["n_images"] == 0
+    assert hs["with_hand_over_container"]["per_class"]["red_box"]["recall"] == pytest.approx(1.0)
+    assert rep["subsets"]["gold"]["red_yellow_confusion"]["red_box"]["red_box"] == 2
+    assert "by_hand" not in rep["subsets"]["all"]
