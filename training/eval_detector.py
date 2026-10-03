@@ -39,6 +39,7 @@ from typing import Any
 import numpy as np
 import yaml
 
+from perception.detector import resolve_device, rfdetr_predict, yolo_predict
 from training.autolabel import MOVABLE_CLASSES, _intersects
 
 REPORT_VERSION = 1
@@ -86,15 +87,6 @@ def repeat_test_gate(
             "(the reason is recorded in the new report)."
         )
     return reason or None
-
-
-def resolve_device(device: str) -> str:
-    """``auto`` means CUDA when torch sees one, else CPU; an explicit device is kept."""
-    if device != "auto":
-        return device
-    import torch
-
-    return "cuda" if torch.cuda.is_available() else "cpu"
 
 
 def overlay_split(folder: str) -> str:
@@ -385,20 +377,7 @@ def rfdetr_predictor(
     slot (num_classes + 1 outputs) that a trained model never fires; a random head can."""
 
     def predict(bgr: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-        rgb = np.ascontiguousarray(bgr[..., ::-1])  # RGB only at the model boundary
-        det = model.predict(rgb, threshold=floor, include_source_image=False)
-        n = len(det.xyxy)
-        conf = det.confidence if det.confidence is not None else np.ones(n)
-        cls = det.class_id if det.class_id is not None else np.zeros(n, int)
-        xyxy, conf, cls = (
-            np.asarray(det.xyxy, float).reshape(-1, 4),
-            np.asarray(conf, float),
-            np.asarray(cls, int),
-        )
-        if n_classes is not None:
-            keep = (cls >= 0) & (cls < n_classes)
-            xyxy, conf, cls = xyxy[keep], conf[keep], cls[keep]
-        return xyxy, conf, cls
+        return rfdetr_predict(model, bgr, floor, n_classes)  # the runtime's own code path
 
     return predict
 
@@ -429,12 +408,7 @@ def load_predictor(
         dev = 0 if dev == "cuda" else dev
 
         def predict(bgr: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-            r = y.predict(bgr, conf=MAP_CONF_FLOOR, imgsz=384, device=dev, verbose=False)[0]
-            return (
-                r.boxes.xyxy.cpu().numpy().astype(float).reshape(-1, 4),
-                r.boxes.conf.cpu().numpy().astype(float),
-                r.boxes.cls.cpu().numpy().astype(int),
-            )
+            return yolo_predict(y, bgr, conf=MAP_CONF_FLOOR, imgsz=384, device=dev)  # runtime path
 
         return predict
     raise ValueError(f"unknown model {model!r}")
