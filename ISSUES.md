@@ -1425,3 +1425,34 @@ Pipeline view, median detector + median hands + 5 ms (budget 125 ms = 8 fps). De
 **Not done.** No detector chosen; test split not evaluated or read; no MANIFEST; nothing downloaded or installed; no ONNX file committed; the benchmark is one laptop state (Balanced plan, AC), two runs; the pipeline fps is a model built from the three medians, not a measured end-to-end run.
 
 **Caveats.** (1) Scores are against labels that partly come from the auto-labeler (agreement with the corrected labels, not independent truth). (2) Gold is 88 frames of one performer and one setup, so it says little about other people, lighting or arrangements. (3) Valid also drove early stopping and checkpoint selection of both trainings, so valid numbers are optimistic. (4) Hand data come from the same MediaPipe model the pipeline would use, so the hand-over-container split is a proxy. (5) Scores are near ceiling (every class recall >= 0.966, mAP50 >= 0.996), so rule (1) cannot separate the models; the difference between them is speed (and licence), not accuracy. (6) YOLO11n is AGPL-3.0; if rule (4) applies, the licence decision must be logged.
+
+## 2026-10-03 P1.5 DECISION - detector choice: YOLO11n (default), RF-DETR-Nano alternative
+
+**Written and committed BEFORE any test-split evaluation (S-F2b).** The test split has not been evaluated or read for any detector at the time of this entry.
+
+**Pre-registered rule (written before any result, S-F2a).** (1) A detector is eligible if every class has recall >= 0.85 and mAP50 >= 0.80 on the valid gold subset at `detector_conf_floor`. (2) Among eligible detectors, prefer one meeting `min_pipeline_fps` 8 (median detector + hands + 5 ms <= 125 ms per frame on the demo laptop). (3) Both eligible and fast: RF-DETR-Nano. (4) Only YOLO11n fast enough: YOLO11n, with the AGPL-3.0 decision logged. (5) Neither fast enough: present options. (6) Test is evaluated ONCE, for the chosen detector only, afterwards.
+
+**Eligibility, valid gold (88 frames, floor 0.3, IoU 0.5), recall per class and mAP50** (from the S-F2a entry): RF-DETR-Nano outer 1.000, tray 1.000, red 1.000, yellow 0.977, button 1.000, mAP50 0.9969, mAP50-95 0.9683. YOLO11n outer 1.000, tray 1.000, red 0.977, yellow 0.966, button 1.000, mAP50 0.9963, mAP50-95 0.9570. Both ELIGIBLE under rule (1), with a large margin.
+
+**Speed, per frame with hands, detector on every frame, median detector + median hands + 5 ms** (budget 125 ms; two runs, this laptop: Ryzen 5 5600H, AC power, Balanced plan): RF-DETR-Nano 195.1 and 170.5 ms (5.1 and 5.9 fps); with optimize_for_inference 184.8 and 158.0 ms (5.4 and 6.3 fps); ONNX Runtime of RF-DETR 145 ms alone (no gain, outputs agree). YOLO11n 52.1 and 50.5 ms (19.2 and 19.8 fps). This laptop is the demo laptop.
+
+**Application of rule (4).** RF-DETR-Nano does not meet 125 ms in either run (also not optimized or in ONNX); YOLO11n meets it with a wide margin. Both are eligible and only YOLO11n is fast enough, so rule (4) applies: **YOLO11n**, with the licence decision logged below. The Lead accepted YOLO11n as the DEFAULT detector. RF-DETR-Nano stays as the documented alternative.
+
+**Accuracy cost of the choice (valid gold, 88 frames).** mAP50-95 0.957 (YOLO11n) versus 0.968 (RF-DETR-Nano); red_box recall 0.977 versus 1.000 (yellow 0.966 versus 0.977). All misses of both models are in frames with a hand over a container (YOLO11n: red 60/62, yellow 59/62 there; every class 1.000 with the hand elsewhere). No red/yellow swap in either model; every error is a miss. Scores are near ceiling, so the accuracy difference is small and the choice is driven by speed.
+
+**Licence facts (factual, NOT legal advice).** Ultralytics YOLO11 code and weights are AGPL-3.0. Ultralytics also sells an Enterprise licence for commercial, internal and production use. An Ultralytics forum reply states that using AGPL software without an Enterprise licence requires open-sourcing the whole solution publicly, and that private or proprietary deployments need the Enterprise licence; trained models are covered too. This is the vendor's stated position, stricter than a minimal reading of the AGPL text; it is recorded as stated and not verified with a lawyer. Implication for hand-over: delivering the system (code plus weights) to ISRO/the ministry may count as conveying a combined work that has to be offered under AGPL-3.0, or may require an Enterprise licence. The SIH2024 guidelines say solution IP resides with the students and the ministry gets lifetime free access; the SIH 2026 text and the ISRO software policy were not found. RF-DETR-Nano is Apache-2.0 and raises none of this.
+
+**Mitigations.**
+- (a) A backend-only, launch-time detector toggle (manifest `active_detector` plus a command-line or environment override). No control in the frontend; never changed during a run; the chosen detector name and sha256 are recorded in every log header. To be built at the pipeline stage, NOT in this session.
+- (b) `ultralytics` lives in its own optional dependency group and is imported only when YOLO11n is selected, so a licence-clean build can leave it out.
+- (c) RF-DETR-Nano (Apache-2.0) is trained, evaluated on valid and kept as the documented alternative.
+- (d) The choice is stated in the README, the slides and the manifest.
+- (e) The Lead asks the mentor or the ISRO contact whether AGPL-3.0 is acceptable for hand-over and checks the SIH 2026 IP clause.
+
+**Scope decision.** For the deadline, tuning and validation are completed for YOLO11n. RF-DETR-Nano's own cache, tuning profile and replay are done only when time permits, recorded as a follow-up. Until then RF-DETR-Nano is recorded as not validated for the pipeline and not evaluated on test.
+
+**Caveats.** One performer, one setup, no gloves. Labels partly come from the auto-labeler (agreement with corrected labels, not independent truth). Valid drove early stopping and checkpoint selection, so valid numbers are optimistic. Gold is 88 frames (valid) and 80 frames (test). The benchmark is one laptop state (Balanced, AC), two runs, and the pipeline fps is a model from medians, not a measured end-to-end run.
+
+**target_fps proposal: 10**, to be verified at the pipeline stage. Basis: about 50 ms per frame for detector and hands (YOLO11n 19-20 ms, hands 27 ms, plus 5 ms overhead) leaves about 50 ms of the 100 ms frame budget for tracking, streaming and speech. `min_pipeline_fps` stays 8.
+
+**Follow-ups.** Adding `ultralytics` (and the detector backends) to the `run` dependency groups is a P2 lockfile change, not done here. The detector toggle code is not built here. Both are for the pipeline stage.
