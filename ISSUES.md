@@ -1496,3 +1496,17 @@ Red/yellow confusion (best-IoU >= 0.5 at the floor). All frames: red 211 red, 1 
 **Caveats.** One performer, one setup, no gloves. Labels partly from the auto-labeler. Valid drove early stopping, so valid numbers are optimistic; test was untouched until this run. Gold test is 80 frames: one yellow miss changes yellow recall by 1.25 points, and the lowest value (0.950) is 10 points above the threshold. Hand data come from the same MediaPipe model, so the hand split is a proxy. Near-ceiling scores mean this acceptance gate is easy to pass and says little about other people or lighting.
 
 **NOT done.** RF-DETR-Nano was not evaluated on test; no retraining; no threshold change; no lockfile change; no toggle code; no runtime integration; no network, download or install. No other test run beyond the single completed evaluation. `reports/dataset.json` was already committed (cdc732f) before this session, so the tree was clean.
+
+## 2026-10-03 P2 CONTRACT - compose_model_stamp gets an optional detector_name
+
+**What changes.** `compose_model_stamp` in contracts.py gains a LAST parameter `detector_name: str = "rfdetr-nano"`, used as the first label of the stamp: `"<detector_name>:<sha256[:8]>|hand:<sha256[:8]>|pose:<sha256[:8]>"`. `detector_name` must match `^[a-z0-9]+(-[a-z0-9]+)*$`; an empty string, uppercase, `:`, `|`, spaces or a trailing newline raise `ValueError`, so a stamp always has exactly three `|`-separated parts with exactly one `:` each. Function and docstring only. Tests: `tests/unit/contracts/test_model_stamp.py`. Doc lines: IMPLEMENTATION_PLAN.md 5.2 (the stamp format) and the `weights/MANIFEST.json` line.
+
+**Why.** The detector choice (D130/D131, see "2026-10-03 P1.5 DECISION - detector choice: YOLO11n (default), RF-DETR-Nano alternative") makes YOLO11n the default, with a backend-only launch-time toggle to RF-DETR-Nano. With the label hard-coded, a YOLO11n pipeline would stamp its perception caches and reports as `rfdetr-nano`. Caches are valid only while their `model_stamp` equals the pipeline's, so the label must name the detector actually loaded.
+
+**Additive.** A new optional parameter with a default. `compose_model_stamp(d, h, p)` returns exactly what it returned before (tested against the original format). The one existing mention outside contracts.py is a docstring in `perception/hands.py`; no code calls the function yet, so no caller changes.
+
+**What does NOT change.** Every other type, validator and default in contracts.py; the `hand:` and `pose:` labels; the 8-character sha256 prefix; `config/experiment.json`; the cache and manifest file shapes.
+
+**Convention: pose disabled.** When pose is disabled (`enable_pose=False`, the default) callers pass `pose_sha256="none"`, so the stamp reads `pose:none`.
+
+**Who must follow.** P1 (writer) composes the stamp from `weights/MANIFEST.json`, passing the manifest's detector name mapped to the stamp label: `yolo11n` -> `"yolo11n"`, `rfdetr_nano` -> `"rfdetr-nano"` (underscore in the manifest, hyphen in the stamp; never pass the manifest name through). P2 only compares stamp strings and never composes or parses them.

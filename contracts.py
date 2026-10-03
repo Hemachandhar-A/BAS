@@ -84,15 +84,33 @@ Unit = Annotated[float, AfterValidator(_finite), Field(ge=0.0, le=1.0)]
 SnakeCaseStr = Annotated[str, AfterValidator(_is_snake_case)]
 
 
-def compose_model_stamp(detector_sha256: str, hand_sha256: str, pose_sha256: str) -> str:
+def compose_model_stamp(
+    detector_sha256: str,
+    hand_sha256: str,
+    pose_sha256: str,
+    detector_name: str = "rfdetr-nano",
+) -> str:
     """The one place the ``model_stamp`` string is composed, so P1 (writer)
     and P2 (reader/verifier) can never disagree on its format.
 
-    Format: ``"rfdetr-nano:<sha256[:8]>|hand:<sha256[:8]>|pose:<sha256[:8]>"``
-    (IMPLEMENTATION_PLAN.md 5.2).
+    Format: ``"<detector_name>:<sha256[:8]>|hand:<sha256[:8]>|pose:<sha256[:8]>"``
+    (IMPLEMENTATION_PLAN.md 5.2): exactly three ``|``-separated parts, each
+    with exactly one ``:``.
+
+    ``detector_name`` is the label of the active detector, for example
+    ``"rfdetr-nano"`` (the default, which reproduces the original stamp) or
+    ``"yolo11n"``. It must match ``^[a-z0-9]+(-[a-z0-9]+)*$``; anything else
+    (empty, uppercase, ``:``, ``|``, spaces) raises ``ValueError``.
+
+    When pose is disabled (``enable_pose=False``) callers pass
+    ``pose_sha256="none"``, so the stamp reads ``pose:none``.
     """
+    if not re.fullmatch(r"[a-z0-9]+(-[a-z0-9]+)*", detector_name):
+        raise ValueError(
+            f"detector_name {detector_name!r} must match ^[a-z0-9]+(-[a-z0-9]+)*$"
+        )
     return (
-        f"rfdetr-nano:{detector_sha256[:8]}"
+        f"{detector_name}:{detector_sha256[:8]}"
         f"|hand:{hand_sha256[:8]}"
         f"|pose:{pose_sha256[:8]}"
     )

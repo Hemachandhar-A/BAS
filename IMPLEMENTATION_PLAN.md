@@ -162,7 +162,7 @@ P1 owns everything up to `PerceptionFrame`. It is *pure evidence* with no experi
 - `runs/<run_id>/video.mp4` + `script.json` (`RunScript`) — the crew's recordings. `runs/run_plan.csv` is the plan; `runs/manifest.csv` is derived.
 - `data/cache/<run_id>/perception.jsonl` — line 1 is a `PerceptionCacheHeader`, each later line a `PerceptionFrame`. Valid only while its `model_stamp` equals the replaying `Perception.model_stamp`; any model change means rebuilding caches. **Caches are built at `RuntimeConfig.target_fps`** so replay matches live (Plan 5.6, essential-features §0).
 - `runs_out/logs/<run_id>.jsonl` (`LogEntry` lines) and `runs_out/video/<run_id>.avi` — runtime output.
-- `model_stamp` = `"rfdetr-nano:<sha256[:8]>|hand:<sha256[:8]>|pose:<sha256[:8]>"`. The sha256 is therefore computed anyway; *verifying it at load* stays Tier 2 (`non-essential-features.md`).
+- `model_stamp` = `"<detector_name>:<sha256[:8]>|hand:<sha256[:8]>|pose:<sha256[:8]>"`, composed only by `compose_model_stamp`; `detector_name` is the active detector's label (`yolo11n` or `rfdetr-nano`, default `rfdetr-nano`), and `pose` reads `pose:none` when pose is disabled. The sha256 is therefore computed anyway; *verifying it at load* stays Tier 2 (`non-essential-features.md`).
 
 ## 5.3 StateTracker semantics (P2, `state/tracker.py` — pure logic, no models, no clock)
 
@@ -246,7 +246,7 @@ replay:     { exact_deviation_match: true, max_mismatched_runs: 0 }
 label_review: { max_bad_fraction_per_class: 0.10 }
 ```
 
-**`weights/MANIFEST.json`** — `detector`: `name`, `file`, `sha256`, `classes` (ordered, = `experiment.classes`), `resolution`, `dataset_stamp`, `trained_at`; `hand` and `pose`: `file`, `sha256`; plus the composed `model_stamp`.
+**`weights/MANIFEST.json`** — `detector`: `name`, `file`, `sha256`, `classes` (ordered, = `experiment.classes`), `resolution`, `dataset_stamp`, `trained_at`; `hand` and `pose`: `file`, `sha256`; plus the composed `model_stamp` (detector label from the manifest's detector name: `yolo11n` -> `yolo11n`, `rfdetr_nano` -> `rfdetr-nano`).
 
 **`runs/manifest.csv`** (derived) — `run_id, split, script_type, fps, frames, duration_s, width, height, operator, camera_setup_id, video_sha256`.
 
