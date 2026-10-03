@@ -54,6 +54,7 @@ from training.autolabel import MOVABLE_CLASSES, _intersects, build_coco
 SPLITS = ("train", "val", "test")
 FOLDER = {"train": "train", "val": "valid", "test": "test"}
 OVERLAY_VERSION = 1
+FRESH_KEY = "fresh_after_repair"  # label_review block of the post-repair fresh sample
 
 
 class BuildError(Exception):
@@ -123,10 +124,13 @@ def check_overlay_box(box: object, width: int, height: int, where: str) -> None:
 def merge_label_review(existing_report: dict | None, new: dict | None) -> dict:
     """The ``label_review`` block of the new report: ``new`` if given, else the block already
     recorded in the existing report, else ``not_recorded``. A recorded block is never replaced
-    by ``not_recorded``."""
-    if new is not None:
-        return new
+    by ``not_recorded``. The post-repair ``fresh_after_repair`` block survives a new block that
+    does not carry its own (the build's ``--review-done`` recomputes the 80-frame block only)."""
     old = (existing_report or {}).get("label_review")
+    if new is not None:
+        if isinstance(old, dict) and FRESH_KEY in old and FRESH_KEY not in new:
+            return {**new, FRESH_KEY: old[FRESH_KEY]}
+        return new
     if isinstance(old, dict) and old.get("status") != "not_recorded" and old:
         return old
     return {"status": "not_recorded"}
@@ -201,6 +205,38 @@ def _validate_overlay(
             if cls not in classes:
                 raise BuildError(f"static override class {cls!r} is not in experiment.classes")
             check_overlay_box(box, *dims[run], f"static override {run} {cls}")
+
+
+def validate_overlay_path(
+    path: Path,
+    split: str,
+    classes: list[str],
+    manifest_rows: list[dict],
+    index: dict[str, dict],
+) -> dict:
+    """Load the overlay file at ``path`` and run exactly the checks ``build_dataset`` runs
+    (version, split, frames and classes exist, boxes are real and inside the image, static
+    overrides name runs of the split). Returns the overlay; raises ``BuildError``."""
+    split_of_run = {r["run_id"]: r["split"] for r in manifest_rows}
+    dims = {r["run_id"]: (int(r["width"]), int(r["height"])) for r in manifest_rows}
+    files_by_split: dict[str, set[str]] = {s: set() for s in SPLITS}
+    for run, info in index.items():
+        for fid in info["frame_ids"]:
+            files_by_split[info["split"]].add(f"{run}_{fid}.jpg")
+    if split not in files_by_split:
+        raise BuildError(f"unknown split {split!r}; use one of {list(SPLITS)}")
+    overlay = _load_overlay(Path(path), split)
+    _validate_overlay(
+        overlay,
+        split,
+        classes,
+        files_by_split[split],
+        set().union(*files_by_split.values()),
+        {r for r, i in index.items() if i["split"] == split},
+        set(split_of_run),
+        dims,
+    )
+    return overlay
 
 
 def apply_overlay(

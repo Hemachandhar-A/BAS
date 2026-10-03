@@ -527,3 +527,37 @@ def test_report_records_hand_share_when_hands_are_given(tmp_path):
     hands = {("a1", 0): [(22.0, 22.0, 30.0, 30.0)]}
     tr = build_dataset(**kw, hands=hands)["splits"]["train"]["hand_over_container"]
     assert tr["with_hand_over_container"] == 1 and tr["kept_frames"] == 4
+
+
+def test_merge_label_review_carries_the_fresh_block_over_a_recomputed_old_block():
+    fresh = {"status": "recorded", "n_frames": 60, "gate_passes": True}
+    existing = {"label_review": {"stratified": {"n_frames": 60}, "fresh_after_repair": fresh}}
+    new = {"stratified": {"n_frames": 60}}
+    assert merge_label_review(existing, new) == {**new, "fresh_after_repair": fresh}
+    assert merge_label_review(existing, None)["fresh_after_repair"] == fresh
+    own = {"stratified": {}, "fresh_after_repair": {"n_frames": 5}}
+    assert merge_label_review(existing, own) == own
+
+
+def test_rebuild_with_review_done_keeps_both_blocks(tmp_path):
+    kw = _setup(tmp_path)
+    fresh = {"status": "recorded", "n_frames": 60}
+    build_dataset(**kw, label_review={"stratified": {"n_frames": 60}, "fresh_after_repair": fresh})
+    again = build_dataset(**kw, label_review={"stratified": {"n_frames": 60}})
+    assert again["label_review"]["fresh_after_repair"] == fresh
+    assert again["label_review"]["stratified"] == {"n_frames": 60}
+
+
+def test_validate_overlay_path_runs_the_build_checks(tmp_path):
+    from training.build_dataset import validate_overlay_path
+
+    kw = _setup(tmp_path)
+    _overlay(tmp_path, "train", {"frames": {"a1_0.jpg": {"excluded": True, "boxes": []}}})
+    p = tmp_path / "corrections" / "train.json"
+    out = validate_overlay_path(p, "train", CLASSES, kw["manifest_rows"], kw["index"])
+    assert "a1_0.jpg" in out["frames"]
+    _overlay(tmp_path, "train", {"frames": {"v1_0.jpg": {"excluded": True, "boxes": []}}})
+    with pytest.raises(BuildError, match="another split"):
+        validate_overlay_path(p, "train", CLASSES, kw["manifest_rows"], kw["index"])
+    with pytest.raises(BuildError, match="unknown split"):
+        validate_overlay_path(p, "valid", CLASSES, kw["manifest_rows"], kw["index"])
