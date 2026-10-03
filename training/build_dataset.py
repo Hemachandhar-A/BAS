@@ -12,7 +12,23 @@ Reads ``data/frames/index.json`` (sampled frames), ``data/labels/frame_labels.js
 Overlay (Plan 5.8): ``frames["<run>_<frame>.jpg"]`` REPLACES that frame's boxes wholesale
 (and can bring back a frame the auto-labeler excluded); ``excluded: true`` drops the frame;
 ``verified: true`` marks a gold frame; ``static_overrides[run][class]`` replaces that
-class's box on every auto-labeled frame of the run unless the frame has its own entry.
+class's box on every auto-labeled frame of the run unless the frame has its own entry. A
+static override never resurrects a frame the labeler excluded: only a frame entry of its own
+can bring such a frame back, so an excluded frame stays excluded under a static override.
+An overlay box must be a real box inside the image (x1 < x2, y1 < y2, within the frame's
+width and height); a reversed, zero-size or out-of-image box, a box that does not have four
+numbers, or a class that appears twice in one entry is a ``BuildError`` naming the frame (or the
+run and class of a static override). Nothing is clipped silently.
+
+Stamp: ``dataset_stamp`` hashes the three ``_annotations.coco.json`` files and the overlay
+files, NOT the JPEG bytes. The images are unmodified copies of the frame cache, which is a
+deterministic function of the run videos (``video_sha256`` in ``runs/manifest.csv``), and the
+annotation files name every image and its size, so a changed image set changes the stamp; a
+re-encoded frame with the same name would not. That is accepted to keep the stamp cheap and
+independent of the JPEG encoder; ``reports/dataset.json`` records the image counts per split.
+
+Report: ``reports/dataset.json`` keeps its ``label_review`` block across rebuilds; a build
+without ``--review-done`` never replaces a recorded block with ``not_recorded``.
 
 Assertions: no run in two splits; the frame index agrees with the manifest (so ``train`` holds
 only train runs); no frame left unlabeled; overlay version 1, its ``split`` equals its file
@@ -27,12 +43,13 @@ import argparse
 import csv
 import hashlib
 import json
+import math
 import shutil
 from collections import Counter
 from datetime import datetime
 from pathlib import Path
 
-from training.autolabel import build_coco
+from training.autolabel import MOVABLE_CLASSES, _intersects, build_coco
 
 SPLITS = ("train", "val", "test")
 FOLDER = {"train": "train", "val": "valid", "test": "test"}
@@ -85,6 +102,63 @@ def _boxes_equal(a: dict[str, list[float]], b: dict[str, list[float]]) -> bool:
     return {k: list(v) for k, v in a.items()} == {k: list(v) for k, v in b.items()}
 
 
+def check_overlay_box(box: object, width: int, height: int, where: str) -> None:
+    """``box`` must be four finite numbers with x1 < x2 and y1 < y2, inside the image.
+    ``where`` names the frame (or run and class) in the message."""
+    try:
+        x1, y1, x2, y2 = (float(v) for v in box)  # type: ignore[union-attr]
+        four = len(box) == 4  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        raise BuildError(f"{where}: box {box!r} must be four numbers [x1, y1, x2, y2]") from None
+    if not four or not all(math.isfinite(v) for v in (x1, y1, x2, y2)):
+        raise BuildError(f"{where}: box {box!r} must be four finite numbers [x1, y1, x2, y2]")
+    if x2 < x1 or y2 < y1:
+        raise BuildError(f"{where}: reversed box {list(box)} (needs x1 < x2 and y1 < y2)")  # type: ignore[call-overload]
+    if x2 == x1 or y2 == y1:
+        raise BuildError(f"{where}: zero-size box {list(box)}")  # type: ignore[call-overload]
+    if x1 < 0 or y1 < 0 or x2 > width or y2 > height:
+        raise BuildError(f"{where}: box {list(box)} is outside the {width}x{height} image")  # type: ignore[call-overload]
+
+
+def merge_label_review(existing_report: dict | None, new: dict | None) -> dict:
+    """The ``label_review`` block of the new report: ``new`` if given, else the block already
+    recorded in the existing report, else ``not_recorded``. A recorded block is never replaced
+    by ``not_recorded``."""
+    if new is not None:
+        return new
+    old = (existing_report or {}).get("label_review")
+    if isinstance(old, dict) and old.get("status") != "not_recorded" and old:
+        return old
+    return {"status": "not_recorded"}
+
+
+def hand_container_share(
+    final: dict[str, dict[str, list[float]]],
+    hands: dict[tuple[str, int], list[tuple[float, ...]]],
+) -> dict:
+    """Proxy for the hard case: of the kept frames (``final``), how many have a hand box that
+    intersects a red or yellow box (``MOVABLE_CLASSES``). Frames with no hand data are counted
+    separately, never guessed."""
+    with_hand = no_data = 0
+    for name, boxes in final.items():
+        run, fid = _parse_file_name(name)
+        if (run, fid) not in hands:
+            no_data += 1
+            continue
+        if any(
+            _intersects(h, boxes[c])
+            for h in hands[(run, fid)]
+            for c in MOVABLE_CLASSES
+            if c in boxes
+        ):
+            with_hand += 1
+    return {
+        "kept_frames": len(final),
+        "with_hand_over_container": with_hand,
+        "no_hand_data": no_data,
+    }
+
+
 def _load_overlay(path: Path, split: str) -> dict:
     data = json.loads(path.read_text(encoding="utf-8"))
     if data.get("version") != OVERLAY_VERSION:
@@ -102,23 +176,31 @@ def _validate_overlay(
     all_files: set[str],
     runs_of_split: set[str],
     all_runs: set[str],
+    dims: dict[str, tuple[int, int]],
 ) -> None:
     for name, entry in overlay.get("frames", {}).items():
         if name not in all_files:
             raise BuildError(f"overlay frame {name} does not exist in the sampled frames")
         if name not in files_of_split:
             raise BuildError(f"overlay for split {split} touches {name}, which is in another split")
+        run, _ = _parse_file_name(name)
+        seen: set[str] = set()
         for box in entry.get("boxes", []):
             if box["class"] not in classes:
                 raise BuildError(f"overlay class {box['class']!r} is not in experiment.classes")
+            if box["class"] in seen:
+                raise BuildError(f"overlay frame {name}: duplicate class {box['class']!r}")
+            seen.add(box["class"])
+            check_overlay_box(box["xyxy"], *dims[run], f"overlay frame {name} {box['class']}")
     for run, per_class in overlay.get("static_overrides", {}).items():
         if run not in all_runs:
             raise BuildError(f"static override names run {run}, which does not exist")
         if run not in runs_of_split:
             raise BuildError(f"static override for run {run} is in another split than {split}")
-        for cls in per_class:
+        for cls, box in per_class.items():
             if cls not in classes:
                 raise BuildError(f"static override class {cls!r} is not in experiment.classes")
+            check_overlay_box(box, *dims[run], f"static override {run} {cls}")
 
 
 def apply_overlay(
@@ -165,6 +247,10 @@ def apply_overlay(
         "frames_excluded_overlay": excluded_overlay,
         "frames_static_overridden": static_overridden,
         "frames_excluded_auto": len(files - set(auto) - set(entries)),
+        "frames_labeler_excluded": len(files - set(auto)),
+        "frames_recovered": sum(
+            1 for n, e in entries.items() if not e.get("excluded") and n not in auto
+        ),
     }
     return final, stats
 
@@ -184,6 +270,7 @@ def build_dataset(
     report_path: Path,
     generated_at: str,
     label_review: dict | None = None,
+    hands: dict[tuple[str, int], list[tuple[float, ...]]] | None = None,
 ) -> dict:
     classes = list(classes)
     if not classes or len(set(classes)) != len(classes):
@@ -240,6 +327,7 @@ def build_dataset(
                 all_files,
                 runs_by_split[split],
                 set(split_of_run),
+                dims,
             )
 
     out_dir = Path(out_dir)
@@ -277,14 +365,19 @@ def build_dataset(
         cat_name = {c["id"]: c["name"] for c in coco["categories"]}
         per_class = Counter(cat_name[a["category_id"]] for a in coco["annotations"])
         per_run = Counter(_parse_file_name(i["file_name"])[0] for i in coco["images"])
+        run_of_image = {i["id"]: _parse_file_name(i["file_name"])[0] for i in coco["images"]}
+        ann_per_run = Counter(run_of_image[a["image_id"]] for a in coco["annotations"])
         report_splits[FOLDER[split]] = {
             "frames_sampled": len(files_by_split[split]),
             "images": len(coco["images"]),
             "annotations": len(coco["annotations"]),
             "images_per_run": dict(sorted(per_run.items())),
             "annotations_per_class": {c: per_class[c] for c in classes},
+            "annotations_per_run": dict(sorted(ann_per_run.items())),
             **stats,
         }
+        if hands is not None:
+            report_splits[FOLDER[split]]["hand_over_container"] = hand_container_share(final, hands)
 
     report = {
         "version": 1,
@@ -295,9 +388,10 @@ def build_dataset(
             p.stem: hashlib.sha256(p.read_bytes()).hexdigest()[:16] for p in overlay_files
         },
         "splits": report_splits,
-        "label_review": label_review if label_review is not None else {"status": "not_recorded"},
     }
     report_path = Path(report_path)
+    existing = json.loads(report_path.read_text(encoding="utf-8")) if report_path.exists() else None
+    report["label_review"] = merge_label_review(existing, label_review)
     report_path.parent.mkdir(parents=True, exist_ok=True)
     report_path.write_text(json.dumps(report, indent=1), encoding="utf-8")
     return report
@@ -307,7 +401,13 @@ def build_dataset(
 
 
 def main(argv: list[str] | None = None) -> None:
-    from training.autolabel import FRAMES_DIR, LABELS_DIR, load_classes, load_index
+    from training.autolabel import (
+        FRAMES_DIR,
+        LABELS_DIR,
+        _hands_cache,
+        load_classes,
+        load_index,
+    )
     from training.review_sheet import compute_outcome
 
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
@@ -341,6 +441,7 @@ def main(argv: list[str] | None = None) -> None:
         report_path=args.report,
         generated_at=datetime.now().isoformat(timespec="seconds"),
         label_review=review,
+        hands=_hands_cache(),
     )
     print(json.dumps(report, indent=1))
 

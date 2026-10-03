@@ -16,6 +16,8 @@ from training.build_dataset import (
     build_dataset,
     check_coco,
     dataset_stamp,
+    hand_container_share,
+    merge_label_review,
 )
 
 CLASSES = ["outer_box", "tray", "red_box", "yellow_box", "start_button"]
@@ -398,3 +400,130 @@ def test_review_outcome_is_recorded_only_when_given(tmp_path):
     outcome = {"red_box": {"bad": 1, "bad_fraction": 0.05, "hidden_missing": 0, "passes": True}}
     kw2 = _setup(tmp_path / "two")
     assert build_dataset(**kw2, label_review=outcome)["label_review"] == outcome
+
+
+# --- S-F1a follow-ups: overlay edge cases, preserved review, stats, hand share -------------------
+
+
+def _entry(boxes, **kw):
+    return {"excluded": False, "verified": False, "boxes": boxes, **kw}
+
+
+@pytest.mark.parametrize(
+    "boxes,fragment",
+    [
+        (
+            [
+                {"class": "red_box", "xyxy": [1, 1, 5, 5]},
+                {"class": "red_box", "xyxy": [6, 6, 9, 9]},
+            ],
+            "duplicate",
+        ),
+        ([{"class": "red_box", "xyxy": [10, 1, 5, 5]}], "reversed"),
+        ([{"class": "red_box", "xyxy": [1, 10, 5, 5]}], "reversed"),
+        ([{"class": "red_box", "xyxy": [3, 3, 3, 9]}], "zero-size"),
+        ([{"class": "red_box", "xyxy": [3, 3, 9, 3]}], "zero-size"),
+        ([{"class": "red_box", "xyxy": [-1, 3, 9, 9]}], "outside"),
+        ([{"class": "red_box", "xyxy": [3, 3, W + 1, 9]}], "outside"),
+        ([{"class": "red_box", "xyxy": [3, 3, 9, H + 1]}], "outside"),
+        ([{"class": "red_box", "xyxy": [3, 3, 9]}], "four"),
+    ],
+)
+def test_bad_overlay_boxes_are_errors_that_name_the_frame(tmp_path, boxes, fragment):
+    _overlay(tmp_path, "train", {"frames": {"a1_0.jpg": _entry(boxes)}})
+    with pytest.raises(BuildError, match=fragment) as e:
+        build_dataset(**_setup(tmp_path))
+    assert "a1_0.jpg" in str(e.value)
+
+
+def test_a_box_touching_the_image_edge_is_allowed(tmp_path):
+    _overlay(
+        tmp_path,
+        "train",
+        {"frames": {"a1_0.jpg": _entry([{"class": "red_box", "xyxy": [0, 0, W, H]}])}},
+    )
+    build_dataset(**_setup(tmp_path))
+
+
+@pytest.mark.parametrize("box", [[10, 1, 5, 5], [3, 3, 3, 9], [-1, 3, 9, 9], [3, 3, W + 1, 9]])
+def test_bad_static_override_boxes_are_errors_that_name_run_and_class(tmp_path, box):
+    _overlay(tmp_path, "train", {"static_overrides": {"a1": {"tray": box}}})
+    with pytest.raises(BuildError) as e:
+        build_dataset(**_setup(tmp_path))
+    assert "a1" in str(e.value) and "tray" in str(e.value)
+
+
+def test_static_override_on_a_labeler_excluded_frame_leaves_it_excluded(tmp_path):
+    # a1_60 is auto-excluded; the run's static override must not resurrect it
+    _overlay(tmp_path, "train", {"static_overrides": {"a1": {"tray": [101, 11, 151, 51]}}})
+    report = build_dataset(**_setup(tmp_path))
+    assert "a1_60.jpg" not in [i["file_name"] for i in _coco(tmp_path, "train")["images"]]
+    assert report["splits"]["train"]["frames_excluded_auto"] == 1
+
+
+def test_stats_name_labeler_excluded_recovered_and_final_counts(tmp_path):
+    boxes = [{"class": c, "xyxy": b} for c, b in _boxes().items()]
+    _overlay(
+        tmp_path,
+        "train",
+        {
+            "frames": {
+                "a1_60.jpg": _entry(boxes, verified=True),  # recovered
+                "a2_30.jpg": {"excluded": True, "verified": False, "boxes": []},
+            }
+        },
+    )
+    tr = build_dataset(**_setup(tmp_path))["splits"]["train"]
+    assert tr["frames_sampled"] == 5
+    assert tr["frames_labeler_excluded"] == 1
+    assert tr["frames_recovered"] == 1
+    assert tr["frames_excluded_overlay"] == 1
+    assert tr["images"] == 4  # a1_0, a1_30, a1_60 (recovered), a2_0
+    assert tr["annotations_per_run"] == {"a1": 15, "a2": 5}
+
+
+def test_merge_label_review_keeps_a_recorded_block_and_never_writes_not_recorded_over_it():
+    recorded = {"stratified": {"n_frames": 60}}
+    assert merge_label_review(None, None) == {"status": "not_recorded"}
+    assert merge_label_review({"version": 1}, None) == {"status": "not_recorded"}
+    assert merge_label_review({"label_review": recorded}, None) == recorded
+    assert merge_label_review({"label_review": {"status": "not_recorded"}}, None) == {
+        "status": "not_recorded"
+    }
+    new = {"stratified": {"n_frames": 61}}
+    assert merge_label_review({"label_review": recorded}, new) == new
+
+
+def test_rebuild_without_review_done_preserves_the_recorded_label_review(tmp_path):
+    kw = _setup(tmp_path)
+    outcome = {"stratified": {"n_frames": 60, "gate_passes": False}}
+    build_dataset(**kw, label_review=outcome)
+    again = build_dataset(**kw)  # no --review-done
+    assert again["label_review"] == outcome
+    on_disk = json.loads((tmp_path / "reports" / "dataset.json").read_text())
+    assert on_disk["label_review"] == outcome
+    assert on_disk["dataset_stamp"] == again["dataset_stamp"]
+
+
+def test_hand_container_share_counts_hands_over_red_or_yellow_only():
+    final = {
+        "a_0.jpg": _boxes(),
+        "a_1.jpg": _boxes(),
+        "a_2.jpg": _boxes(),
+        "a_3.jpg": _boxes(),
+    }
+    hands = {
+        ("a", 0): [(22.0, 22.0, 30.0, 30.0)],  # over red_box
+        ("a", 1): [(22.0, 60.0, 30.0, 70.0)],  # over yellow_box
+        ("a", 2): [(100.0, 12.0, 120.0, 30.0)],  # over the tray only: not a container
+        # ("a", 3) has no hand data
+    }
+    out = hand_container_share(final, hands)
+    assert out == {"kept_frames": 4, "with_hand_over_container": 2, "no_hand_data": 1}
+
+
+def test_report_records_hand_share_when_hands_are_given(tmp_path):
+    kw = _setup(tmp_path)
+    hands = {("a1", 0): [(22.0, 22.0, 30.0, 30.0)]}
+    tr = build_dataset(**kw, hands=hands)["splits"]["train"]["hand_over_container"]
+    assert tr["with_hand_over_container"] == 1 and tr["kept_frames"] == 4
