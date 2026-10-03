@@ -246,7 +246,7 @@ replay:     { exact_deviation_match: true, max_mismatched_runs: 0 }
 label_review: { max_bad_fraction_per_class: 0.10 }
 ```
 
-**`weights/MANIFEST.json`** — `detector`: `name`, `file`, `sha256`, `classes` (ordered, = `experiment.classes`), `resolution`, `dataset_stamp`, `trained_at`; `hand` and `pose`: `file`, `sha256`; plus the composed `model_stamp` (detector label from the manifest's detector name: `yolo11n` -> `yolo11n`, `rfdetr_nano` -> `rfdetr-nano`).
+**`weights/MANIFEST.json`** — `active_detector` (a detector `name`) and `detectors[]`, each with `name`, `file`, `sha256`, `size_bytes`, `license`, `classes` (ordered, = `experiment.classes`), `input_size`, `detector_conf_floor`, `dataset_stamp_trained`, `dataset_stamp_evaluated`, `trained_at`, `validated_for_pipeline`, `test_evaluated`, the training-summary path and sha256, and the selection decision; `hand` (and `pose` when enabled): `file`, `sha256`. The `model_stamp` is composed at runtime by `contracts.compose_model_stamp` (detector label from the detector name: `yolo11n` -> `yolo11n`, `rfdetr_nano` -> `rfdetr-nano`).
 
 **`runs/manifest.csv`** (derived) — `run_id, split, script_type, fps, frames, duration_s, width, height, operator, camera_setup_id, video_sha256`.
 

@@ -1,0 +1,36 @@
+{
+ "model": "rfdetr",
+ "versions": {
+  "torch": "2.11.0+cu128",
+  "torch_build": "cuda 12.8",
+  "rfdetr": "1.11.0",
+  "ultralytics": "8.4.164",
+  "python": "3.13.15"
+ },
+ "seed": 0,
+ "epochs": 100,
+ "lr": 5e-05,
+ "batch_size": 4,
+ "grad_accum_steps": 4,
+ "effective_batch": 16,
+ "n_train": 593,
+ "n_valid": 173,
+ "seconds_per_iteration_measured": 0.26926265099999114,
+ "total_seconds": 2786.774205355,
+ "best_val_map": 0.9826197624206543,
+ "dataset_stamp": "622c277b5d0e5e06",
+ "classes": [
+  "outer_box",
+  "tray",
+  "red_box",
+  "yellow_box",
+  "start_button"
+ ],
+ "detector_file": "detector.pth",
+ "detector_sha256": "82d9f126cb1d36d08713e6a490629aeeba37fd447db9cebf7381f5e64de804bb",
+ "device_name": "Tesla T4",
+ "dry_run": false,
+ "notes": [],
+ "gpus_seen": 2,
+ "gpu_used": 1
+}

@@ -1510,3 +1510,15 @@ Red/yellow confusion (best-IoU >= 0.5 at the floor). All frames: red 211 red, 1 
 **Convention: pose disabled.** When pose is disabled (`enable_pose=False`, the default) callers pass `pose_sha256="none"`, so the stamp reads `pose:none`.
 
 **Who must follow.** P1 (writer) composes the stamp from `weights/MANIFEST.json`, passing the manifest's detector name mapped to the stamp label: `yolo11n` -> `"yolo11n"`, `rfdetr_nano` -> `"rfdetr-nano"` (underscore in the manifest, hyphen in the stamp; never pass the manifest name through). P2 only compares stamp strings and never composes or parses them.
+
+## 2026-10-03 P1 NOTE - Kaggle FULL run (facts)
+
+Kernel version 4; one of the two T4 GPUs was used. **RF-DETR-Nano:** 100 epochs requested, early stop after about 35 epochs, best EMA epoch 24, effective mAP 0.98262 (RF-DETR's own metric), 2,787 s. **YOLO11n:** 100 epochs, 447 s, mAP50 0.995 and mAP50-95 0.974 on the then-valid 173 frames. Total 3,323 s. The kernel's output-size check (2.34 GB against a 2 GB self-imposed limit) tripped because of the per-epoch RF-DETR checkpoints. The weights were downloaded manually as `.zip` files that are the PyTorch archives themselves, and were verified by sha256 against the manifest. The two training summaries are now tracked as `reports/training/rfdetr_train_summary.json` and `reports/training/yolo11n_train_summary.json` (sha256 equal to the manifest's `training_summary_sha256`); `trained_at` is `2026-10-03`, the date of the Kaggle run log, because the summaries carry no timestamp.
+
+## 2026-10-03 P1 CORRECTION - when the detector selection rule was written down
+
+The selection rule was agreed in the project decision log and in the S-F2a agent prompt before its results existed. Git, however, shows the rule text only from commit 2271be6, which is after the valid results. The DECISION commit f0e2983 still precedes the test report commit a119ca2. So the order of record in git is: valid results and rule text (2271be6), decision (f0e2983), test report (a119ca2); the earlier agreement is not visible in git.
+
+## 2026-10-03 P1 ACCEPTED CHANGE - manifest shape differs from the original Plan 5.8 wording
+
+`weights/MANIFEST.json` carries `detectors[]` plus `active_detector` (per detector: `name`, `file`, `sha256`, `size_bytes`, `license`, `classes`, `input_size`, `detector_conf_floor`, `dataset_stamp_trained`, `dataset_stamp_evaluated`, `trained_at`, `validated_for_pipeline`, `test_evaluated`, training-summary path and sha256), not the single `detector` object and stored `model_stamp` that Plan 5.8 described. Plan 5.8 and the essential-features.md F2 line ("not a runtime switch" became "chosen at launch, never switched during a run") were updated in H0.4 of session S-G with the Lead's approval; the stamp is composed at runtime by `contracts.compose_model_stamp`.
