@@ -1,6 +1,6 @@
 {
  "version": 1,
- "generated_at": "2026-10-03T13:04:37",
+ "generated_at": "2026-10-03T14:03:47",
  "classes": [
   "outer_box",
   "tray",
@@ -8,15 +8,15 @@
   "yellow_box",
   "start_button"
  ],
- "dataset_stamp": "66f3106e49c14995",
+ "dataset_stamp": "622c277b5d0e5e06",
  "overlay_files": {
-  "train": "fbca27d7cbf20b31"
+  "train": "5474f7695e1cf07f"
  },
  "splits": {
   "train": {
    "frames_sampled": 624,
-   "images": 594,
-   "annotations": 2970,
+   "images": 593,
+   "annotations": 2965,
    "images_per_run": {
     "x001": 28,
     "x003": 24,
@@ -27,7 +27,7 @@
     "x008": 31,
     "x010": 25,
     "x011": 26,
-    "x012": 31,
+    "x012": 30,
     "x018": 29,
     "x019": 24,
     "x020": 28,
@@ -46,11 +46,11 @@
     "x044": 13
    },
    "annotations_per_class": {
-    "outer_box": 594,
-    "tray": 594,
-    "red_box": 594,
-    "yellow_box": 594,
-    "start_button": 594
+    "outer_box": 593,
+    "tray": 593,
+    "red_box": 593,
+    "yellow_box": 593,
+    "start_button": 593
    },
    "annotations_per_run": {
     "x001": 140,
@@ -62,7 +62,7 @@
     "x008": 155,
     "x010": 125,
     "x011": 130,
-    "x012": 155,
+    "x012": 150,
     "x018": 145,
     "x019": 120,
     "x020": 140,
@@ -82,13 +82,13 @@
    },
    "frames_corrected": 85,
    "frames_verified": 85,
-   "frames_excluded_overlay": 30,
+   "frames_excluded_overlay": 31,
    "frames_static_overridden": 0,
    "frames_excluded_auto": 0,
    "frames_labeler_excluded": 115,
    "frames_recovered": 85,
    "hand_over_container": {
-    "kept_frames": 594,
+    "kept_frames": 593,
     "with_hand_over_container": 370,
     "no_hand_data": 0
    }
@@ -350,6 +350,57 @@
    "runs": 46,
    "rows": 138,
    "bad_rows": 0
+  },
+  "fresh_after_repair": {
+   "status": "recorded",
+   "recorded_at": "2026-10-03T14:01:58",
+   "source": "data/review/fresh_review.csv",
+   "csv_sha256": "e1697919011210bdfa4441d4cde5b2fbf90858194f6fa188e6c1aa743a75901b",
+   "sample_seed": 20261003,
+   "gate_max_bad_fraction": 0.1,
+   "n_frames": 60,
+   "per_class": {
+    "outer_box": {
+     "bad": 0,
+     "bad_fraction": 0.0,
+     "hidden_missing": 0,
+     "passes": true
+    },
+    "tray": {
+     "bad": 0,
+     "bad_fraction": 0.0,
+     "hidden_missing": 0,
+     "passes": true
+    },
+    "red_box": {
+     "bad": 0,
+     "bad_fraction": 0.0,
+     "hidden_missing": 0,
+     "passes": true
+    },
+    "yellow_box": {
+     "bad": 1,
+     "bad_fraction": 0.016666666666666666,
+     "hidden_missing": 0,
+     "passes": true
+    },
+    "start_button": {
+     "bad": 0,
+     "bad_fraction": 0.0,
+     "hidden_missing": 0,
+     "passes": true
+    }
+   },
+   "gate_passes": true,
+   "bad_cells": [
+    {
+     "frame": "x012_570.jpg",
+     "class": "yellow_box",
+     "reason": "wrong_class",
+     "visibility": ""
+    }
+   ],
+   "bad_frames_not_excluded": []
   }
  }
 }
