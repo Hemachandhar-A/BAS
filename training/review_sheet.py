@@ -9,7 +9,9 @@
                                              # Stage 4b: fresh TRAIN sample from the BUILT dataset
                                              # (overlay applied): fresh_sheet_NN.jpg,
                                              # fresh_sample.json, prefilled fresh_review.csv
-  python -m training.review_sheet --fresh-outcome   # strict-load fresh_review.csv, print the gate
+  python -m training.review_sheet --fresh-outcome [--record]
+                                             # strict-load fresh_review.csv, print the gate;
+                                             # --record adds label_review.fresh_after_repair
   python -m training.review_sheet --edit --split <s> [--gold [N]] [--static] [--only-sample]
                                              # the label editor page data/review/editor_<s>.html
 
@@ -363,6 +365,52 @@ def fresh_outcome(rows: list[ReviewRow], classes: list[str], cells: list[tuple[s
     return {"n_frames": len(cells), "per_class": per_class, "gate_passes": _gate(per_class)}
 
 
+def fresh_block(
+    outcome: dict, rows: list[ReviewRow], meta: dict, csv_sha256: str, recorded_at: str
+) -> dict:
+    """The ``label_review.fresh_after_repair`` block of ``reports/dataset.json``: the fresh
+    outcome plus where it came from (seed, CSV hash) and every bad cell, so a frame to
+    exclude can be found without opening the CSV."""
+    cells = {(r.run_id, r.frame_id) for r in rows}
+    bad = [
+        {
+            "frame": f"{r.run_id}_{r.frame_id}.jpg",
+            "class": r.cls,
+            "reason": r.reason,
+            "visibility": r.visibility,
+        }
+        for r in sorted(rows, key=lambda r: (r.run_id, r.frame_id, r.cls))
+        if r.counts_as_bad and (r.run_id, r.frame_id) in cells
+    ]
+    return {
+        "status": "recorded",
+        "recorded_at": recorded_at,
+        "source": str(FRESH_REVIEW_PATH).replace("\\", "/"),
+        "csv_sha256": csv_sha256,
+        "sample_seed": meta["seed"],
+        "gate_max_bad_fraction": GATE_MAX_BAD_FRACTION,
+        **outcome,
+        "bad_cells": bad,
+    }
+
+
+def unexcluded_bad_frames(block: dict, overlay: dict) -> list[str]:
+    """Frames with a bad cell in the fresh review that the overlay does not exclude (rule: every
+    bad row in a fresh review excludes its frame from training)."""
+    entries = overlay.get("frames", {})
+    frames = sorted({c["frame"] for c in block["bad_cells"]})
+    return [f for f in frames if not entries.get(f, {}).get("excluded")]
+
+
+def record_fresh(report: dict, block: dict) -> dict:
+    """A copy of ``report`` with ``block`` under ``label_review.fresh_after_repair``; the rest
+    of ``label_review`` (the earlier 80-frame block) is kept as it is."""
+    out = dict(report)
+    lr = out.get("label_review")
+    out["label_review"] = {**(lr if isinstance(lr, dict) else {}), "fresh_after_repair": block}
+    return out
+
+
 def _kept_gate(
     rows: list[ReviewRow],
     classes: list[str],
@@ -642,7 +690,7 @@ def cmd_fresh_sample(n: int) -> None:
         print(f"wrote {FRESH_REVIEW_PATH} ({len(cells) * len(classes)} rows, all verdict=ok)")
 
 
-def cmd_fresh_outcome() -> None:
+def cmd_fresh_outcome(record: bool = False) -> None:
     meta = json.loads(FRESH_SAMPLE_PATH.read_text(encoding="utf-8"))
     cells = [(r, int(f)) for r, f in meta["cells"]]
     classes = _classes()
@@ -651,7 +699,33 @@ def cmd_fresh_outcome() -> None:
     missing = keys - {(r.run_id, r.frame_id, r.cls) for r in rows}
     if missing:
         raise SystemExit(f"{len(missing)} rows are missing, e.g. {sorted(missing)[:3]}")
-    print(json.dumps(fresh_outcome(rows, classes, cells), indent=1))
+    outcome = fresh_outcome(rows, classes, cells)
+    print(json.dumps(outcome, indent=1))
+    if not record:
+        return
+    import hashlib
+    from datetime import datetime
+
+    in_sample = set(cells)
+    block = fresh_block(
+        outcome,
+        [r for r in rows if (r.run_id, r.frame_id) in in_sample],
+        meta,
+        hashlib.sha256(FRESH_REVIEW_PATH.read_bytes()).hexdigest(),
+        datetime.now().isoformat(timespec="seconds"),
+    )
+    overlay = (
+        json.loads(CORRECTIONS_TRAIN_PATH.read_text(encoding="utf-8"))
+        if CORRECTIONS_TRAIN_PATH.exists()
+        else {}
+    )
+    block["bad_frames_not_excluded"] = unexcluded_bad_frames(block, overlay)
+    path = Path("reports/dataset.json")
+    report = json.loads(path.read_text(encoding="utf-8"))
+    path.write_bytes(json.dumps(record_fresh(report, block), indent=1).encode("utf-8"))
+    print(f"recorded label_review.fresh_after_repair in {path}")
+    if block["bad_frames_not_excluded"]:
+        print("NOT EXCLUDED yet:", block["bad_frames_not_excluded"])
 
 
 def cmd_edit(split: str, gold: int | None, static: bool, only_sample: bool) -> None:
@@ -693,6 +767,11 @@ def main(argv: list[str] | None = None) -> None:
     g.add_argument(
         "--fresh-outcome", action="store_true", help="gate numbers of data/review/fresh_review.csv"
     )
+    ap.add_argument(
+        "--record",
+        action="store_true",
+        help="with --fresh-outcome: write the block into reports/dataset.json (label_review)",
+    )
     ap.add_argument("--n", type=int, default=N_FRESH, help="with --fresh-sample")
     ap.add_argument(
         "--static",
@@ -722,7 +801,7 @@ def main(argv: list[str] | None = None) -> None:
     elif args.fresh_sample:
         cmd_fresh_sample(args.n)
     elif args.fresh_outcome:
-        cmd_fresh_outcome()
+        cmd_fresh_outcome(args.record)
     elif args.static and (args.sample or args.outcome):
         ap.error("--static combines only with --edit")
     elif args.sample:

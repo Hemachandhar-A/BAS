@@ -132,3 +132,67 @@ def test_cli_fresh_sample_end_to_end(tmp_path, monkeypatch):
     lines = (review / "fresh_review.csv").read_text().splitlines()
     assert lines[0].split(",") == CSV_HEADER and len(lines) == 1 + 8 * 5
     assert all(",ok," in ln for ln in lines[1:])
+
+
+def _fresh_rows(tmp_path, bad=()):
+    cells = [("x001", i * 30) for i in range(10)]
+    path = tmp_path / "fresh_review.csv"
+    write_review_csv(path, prefill_rows(cells, CLASSES, {c: set(CLASSES) for c in cells}))
+    for frame, cls in bad:
+        path.write_text(
+            path.read_text().replace(
+                f"x001,{frame},{cls},ok,,,", f"x001,{frame},{cls},bad,wrong_box,visible,note", 1
+            )
+        )
+    keys = {(r, f, c) for r, f in cells for c in CLASSES}
+    return cells, load_label_review(path, CLASSES, keys)
+
+
+def test_fresh_block_records_gate_bad_cells_and_provenance(tmp_path):
+    from training.review_sheet import fresh_block
+
+    cells, rows = _fresh_rows(tmp_path, bad=[(60, "yellow_box")])
+    block = fresh_block(
+        fresh_outcome(rows, CLASSES, cells),
+        rows,
+        {"seed": 20261003},
+        "ab" * 32,
+        "2026-10-03T14:00:00",
+    )
+    assert block["status"] == "recorded" and block["n_frames"] == 10
+    assert block["gate_passes"] is True and block["sample_seed"] == 20261003
+    assert block["per_class"]["yellow_box"]["bad"] == 1
+    assert block["csv_sha256"] == "ab" * 32 and block["recorded_at"] == "2026-10-03T14:00:00"
+    assert block["bad_cells"] == [
+        {"frame": "x001_60.jpg", "class": "yellow_box", "reason": "wrong_box",
+         "visibility": "visible"}
+    ]  # fmt: skip
+    json.dumps(block)  # plain data
+
+
+def test_unexcluded_bad_frames_are_listed_by_name(tmp_path):
+    from training.review_sheet import fresh_block, unexcluded_bad_frames
+
+    cells, rows = _fresh_rows(tmp_path, bad=[(60, "yellow_box"), (90, "tray")])
+    block = fresh_block(fresh_outcome(rows, CLASSES, cells), rows, {"seed": 1}, "0" * 64, "t")
+    overlay = {"frames": {"x001_60.jpg": {"excluded": True, "verified": False, "boxes": []}}}
+    assert unexcluded_bad_frames(block, overlay) == ["x001_90.jpg"]
+    overlay["frames"]["x001_90.jpg"] = {"excluded": False, "verified": True, "boxes": []}
+    assert unexcluded_bad_frames(block, overlay) == ["x001_90.jpg"]  # corrected is not excluded
+    overlay["frames"]["x001_90.jpg"] = {"excluded": True, "verified": False, "boxes": []}
+    assert unexcluded_bad_frames(block, overlay) == []
+
+
+def test_record_fresh_keeps_the_earlier_80_frame_block():
+    from training.review_sheet import record_fresh
+
+    old = {"stratified": {"n_frames": 60, "gate_passes": False}, "flagged": {"n_frames": 20}}
+    report = {"version": 1, "dataset_stamp": "s", "label_review": old}
+    out = record_fresh(report, {"status": "recorded", "n_frames": 60})
+    assert out["label_review"]["stratified"] == old["stratified"]
+    assert out["label_review"]["flagged"] == old["flagged"]
+    assert out["label_review"]["fresh_after_repair"] == {"status": "recorded", "n_frames": 60}
+    assert out["dataset_stamp"] == "s"
+    assert "fresh_after_repair" not in report["label_review"]  # input not mutated
+    bare = record_fresh({"version": 1}, {"status": "recorded"})
+    assert bare["label_review"] == {"fresh_after_repair": {"status": "recorded"}}
