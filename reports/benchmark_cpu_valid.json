@@ -1,0 +1,239 @@
+{
+ "version": 1,
+ "generated_at": "2026-10-03T21:02:38",
+ "split_used": "valid",
+ "input_px": [
+  848,
+  480
+ ],
+ "model_resolution": 384,
+ "warmup": 20,
+ "timed": 150,
+ "overhead_ms": 5.0,
+ "budget_fps": 8.0,
+ "detector_conf_floor": 0.3,
+ "frames_seed": 0,
+ "weights_sha256": {
+  "rfdetr": "82d9f126cb1d36d08713e6a490629aeeba37fd447db9cebf7381f5e64de804bb",
+  "yolo11n": "cb9cd840618525058823e4242e8ced9539118dc2f134456785667289e1ab1613"
+ },
+ "notes": {
+  "rfdetr_nano_optimized": "extra row: model.optimize_for_inference() applied"
+ },
+ "runs": [
+  {
+   "run": 1,
+   "order": [
+    "rfdetr_nano",
+    "rfdetr_nano_optimized",
+    "yolo11n",
+    "mediapipe_hands"
+   ],
+   "facts": {
+    "cpu": "AMD Ryzen 5 5600H with Radeon Graphics",
+    "logical_cores": 12,
+    "power_plan": "Power Scheme GUID: 381b4222-f694-41f0-9685-ff5bb260df2e  (Balanced)",
+    "on_ac_power": true,
+    "torch_threads": 8,
+    "torch_version": "2.14.0+cpu",
+    "platform": "Windows-10-10.0.26200-SP0",
+    "python": "3.11.16"
+   },
+   "results": {
+    "rfdetr_nano": {
+     "n": 150,
+     "median_ms": 163.06205000000773,
+     "p95_ms": 178.32992000021474,
+     "mean_ms": 165.45957133317037
+    },
+    "rfdetr_nano_optimized": {
+     "n": 150,
+     "median_ms": 152.71485000084795,
+     "p95_ms": 168.9131350001844,
+     "mean_ms": 154.35791600003236
+    },
+    "yolo11n": {
+     "n": 150,
+     "median_ms": 20.024999999805004,
+     "p95_ms": 22.985769998558677,
+     "mean_ms": 20.300598666702474
+    },
+    "mediapipe_hands": {
+     "n": 150,
+     "median_ms": 27.049849999457365,
+     "p95_ms": 36.74467999953776,
+     "mean_ms": 28.31946133315796
+    }
+   },
+   "pipeline_view": {
+    "rfdetr_nano": {
+     "detector_every_1": {
+      "avg_frame_ms": 195.1118999994651,
+      "fps": 5.125264015176632,
+      "frame_ms_with_detector": 195.1118999994651,
+      "meets_budget": false
+     },
+     "detector_every_2": {
+      "avg_frame_ms": 113.58087499946123,
+      "fps": 8.80429913931147,
+      "frame_ms_with_detector": 195.1118999994651,
+      "meets_budget": true
+     },
+     "detector_every_3": {
+      "avg_frame_ms": 86.40386666612662,
+      "fps": 11.573556121789114,
+      "frame_ms_with_detector": 195.1118999994651,
+      "meets_budget": true
+     }
+    },
+    "rfdetr_nano_optimized": {
+     "detector_every_1": {
+      "avg_frame_ms": 184.7647000003053,
+      "fps": 5.412289252212936,
+      "frame_ms_with_detector": 184.7647000003053,
+      "meets_budget": false
+     },
+     "detector_every_2": {
+      "avg_frame_ms": 108.40727499988134,
+      "fps": 9.224473173051297,
+      "frame_ms_with_detector": 184.7647000003053,
+      "meets_budget": true
+     },
+     "detector_every_3": {
+      "avg_frame_ms": 82.95479999974,
+      "fps": 12.054757530644812,
+      "frame_ms_with_detector": 184.7647000003053,
+      "meets_budget": true
+     }
+    },
+    "yolo11n": {
+     "detector_every_1": {
+      "avg_frame_ms": 52.07484999926237,
+      "fps": 19.20312780572896,
+      "frame_ms_with_detector": 52.07484999926237,
+      "meets_budget": true
+     },
+     "detector_every_2": {
+      "avg_frame_ms": 42.06234999935987,
+      "fps": 23.774230398806026,
+      "frame_ms_with_detector": 52.07484999926237,
+      "meets_budget": true
+     },
+     "detector_every_3": {
+      "avg_frame_ms": 38.72484999939237,
+      "fps": 25.82321171071524,
+      "frame_ms_with_detector": 52.07484999926237,
+      "meets_budget": true
+     }
+    }
+   }
+  },
+  {
+   "run": 2,
+   "order": [
+    "mediapipe_hands",
+    "yolo11n",
+    "rfdetr_nano_optimized",
+    "rfdetr_nano"
+   ],
+   "facts": {
+    "cpu": "AMD Ryzen 5 5600H with Radeon Graphics",
+    "logical_cores": 12,
+    "power_plan": "Power Scheme GUID: 381b4222-f694-41f0-9685-ff5bb260df2e  (Balanced)",
+    "on_ac_power": true,
+    "torch_threads": 8,
+    "torch_version": "2.14.0+cpu",
+    "platform": "Windows-10-10.0.26200-SP0",
+    "python": "3.11.16"
+   },
+   "results": {
+    "mediapipe_hands": {
+     "n": 150,
+     "median_ms": 26.46275000188325,
+     "p95_ms": 36.74283999935142,
+     "mean_ms": 28.409708000108367
+    },
+    "yolo11n": {
+     "n": 150,
+     "median_ms": 19.02700000027835,
+     "p95_ms": 20.343460000913183,
+     "mean_ms": 18.774370000295068
+    },
+    "rfdetr_nano_optimized": {
+     "n": 150,
+     "median_ms": 126.55440000162343,
+     "p95_ms": 138.41536999934755,
+     "mean_ms": 127.5450620000144
+    },
+    "rfdetr_nano": {
+     "n": 150,
+     "median_ms": 139.06355000108306,
+     "p95_ms": 153.3942049984034,
+     "mean_ms": 140.3875599999689
+    }
+   },
+   "pipeline_view": {
+    "yolo11n": {
+     "detector_every_1": {
+      "avg_frame_ms": 50.4897500021616,
+      "fps": 19.806000226921057,
+      "frame_ms_with_detector": 50.4897500021616,
+      "meets_budget": true
+     },
+     "detector_every_2": {
+      "avg_frame_ms": 40.976250002022425,
+      "fps": 24.40438058511074,
+      "frame_ms_with_detector": 50.4897500021616,
+      "meets_budget": true
+     },
+     "detector_every_3": {
+      "avg_frame_ms": 37.80508333530937,
+      "fps": 26.45146926752084,
+      "frame_ms_with_detector": 50.4897500021616,
+      "meets_budget": true
+     }
+    },
+    "rfdetr_nano_optimized": {
+     "detector_every_1": {
+      "avg_frame_ms": 158.01715000350669,
+      "fps": 6.328427009206331,
+      "frame_ms_with_detector": 158.01715000350669,
+      "meets_budget": false
+     },
+     "detector_every_2": {
+      "avg_frame_ms": 94.73995000269497,
+      "fps": 10.555209285750669,
+      "frame_ms_with_detector": 158.01715000350669,
+      "meets_budget": true
+     },
+     "detector_every_3": {
+      "avg_frame_ms": 73.6475500024244,
+      "fps": 13.578184202557738,
+      "frame_ms_with_detector": 158.01715000350669,
+      "meets_budget": true
+     }
+    },
+    "rfdetr_nano": {
+     "detector_every_1": {
+      "avg_frame_ms": 170.5263000029663,
+      "fps": 5.864198073743493,
+      "frame_ms_with_detector": 170.5263000029663,
+      "meets_budget": false
+     },
+     "detector_every_2": {
+      "avg_frame_ms": 100.99452500242478,
+      "fps": 9.90152683995485,
+      "frame_ms_with_detector": 170.5263000029663,
+      "meets_budget": true
+     },
+     "detector_every_3": {
+      "avg_frame_ms": 77.81726666891095,
+      "fps": 12.850618414222888,
+      "frame_ms_with_detector": 170.5263000029663,
+      "meets_budget": true
+     }
+    }
+   }
+  }
+ ]
+}

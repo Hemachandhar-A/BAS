@@ -1,0 +1,4497 @@
+{
+ "version": 1,
+ "split": "train",
+ "static_overrides": {},
+ "frames": {
+  "x001_420.jpg": {
+   "excluded": false,
+   "verified": true,
+   "boxes": [
+    {
+     "class": "outer_box",
+     "xyxy": [
+      159.39,
+      30.16,
+      381.15,
+      457.03
+     ]
+    },
+    {
+     "class": "tray",
+     "xyxy": [
+      450.16,
+      39.02,
+      655.73,
+      326.38
+     ]
+    },
+    {
+     "class": "red_box",
+     "xyxy": [
+      194.91,
+      5.87,
+      352.51,
+      191.42
+     ]
+    },
+    {
+     "class": "yellow_box",
+     "xyxy": [
+      476.01,
+      236.77,
+      636.79,
+      329.93
+     ]
+    },
+    {
+     "class": "start_button",
+     "xyxy": [
+      481.98,
+      345,
+      602.64,
+      428.26
+     ]
+    }
+   ]
+  },
+  "x001_435.jpg": {
+   "excluded": false,
+   "verified": true,
+   "boxes": [
+    {
+     "class": "outer_box",
+     "xyxy": [
+      159.39,
+      30.16,
+      381.15,
+      457.03
+     ]
+    },
+    {
+     "class": "tray",
+     "xyxy": [
+      450.16,
+      39.02,
+      655.73,
+      326.38
+     ]
+    },
+    {
+     "class": "red_box",
+     "xyxy": [
+      181.26,
+      91.5,
+      373.56,
+      216.24
+     ]
+    },
+    {
+     "class": "yellow_box",
+     "xyxy": [
+      470.83,
+      229.58,
+      638.79,
+      346.69
+     ]
+    },
+    {
+     "class": "start_button",
+     "xyxy": [
+      481.98,
+      345,
+      602.64,
+      428.26
+     ]
+    }
+   ]
+  },
+  "x001_555.jpg": {
+   "excluded": false,
+   "verified": true,
+   "boxes": [
+    {
+     "class": "outer_box",
+     "xyxy": [
+      159.39,
+      30.16,
+      381.15,
+      457.03
+     ]
+    },
+    {
+     "class": "tray",
+     "xyxy": [
+      450.16,
+      39.02,
+      655.73,
+      326.38
+     ]
+    },
+    {
+     "class": "red_box",
+     "xyxy": [
+      189.18,
+      93.91,
+      357.56,
+      219.46
+     ]
+    },
+    {
+     "class": "yellow_box",
+     "xyxy": [
+      174.96,
+      241.5,
+      353.07,
+      355.19
+     ]
+    },
+    {
+     "class": "start_button",
+     "xyxy": [
+      481.98,
+      345,
+      602.64,
+      428.26
+     ]
+    }
+   ]
+  },
+  "x001_60.jpg": {
+   "excluded": false,
+   "verified": true,
+   "boxes": [
+    {
+     "class": "outer_box",
+     "xyxy": [
+      159.39,
+      30.16,
+      381.15,
+      457.03
+     ]
+    },
+    {
+     "class": "tray",
+     "xyxy": [
+      450.16,
+      39.02,
+      655.73,
+      326.38
+     ]
+    },
+    {
+     "class": "red_box",
+     "xyxy": [
+      154.22,
+      88.02,
+      355.38,
+      235.88
+     ]
+    },
+    {
+     "class": "yellow_box",
+     "xyxy": [
+      200.24,
+      273.77,
+      355.69,
+      370.61
+     ]
+    },
+    {
+     "class": "start_button",
+     "xyxy": [
+      481.98,
+      345,
+      602.64,
+      428.26
+     ]
+    }
+   ]
+  },
+  "x003_120.jpg": {
+   "excluded": false,
+   "verified": true,
+   "boxes": [
+    {
+     "class": "outer_box",
+     "xyxy": [
+      173.67,
+      26.28,
+      393.98,
+      450.8
+     ]
+    },
+    {
+     "class": "tray",
+     "xyxy": [
+      450.25,
+      38.91,
+      655.56,
+      326.46
+     ]
+    },
+    {
+     "class": "red_box",
+     "xyxy": [
+      461.83,
+      40.24,
+      630.86,
+      176.2
+     ]
+    },
+    {
+     "class": "yellow_box",
+     "xyxy": [
+      218.61,
+      252.21,
+      354.37,
+      346.07
+     ]
+    },
+    {
+     "class": "start_button",
+     "xyxy": [
+      482.28,
+      345.28,
+      602.56,
+      428.21
+     ]
+    }
+   ]
+  },
+  "x003_300.jpg": {
+   "excluded": false,
+   "verified": true,
+   "boxes": [
+    {
+     "class": "outer_box",
+     "xyxy": [
+      173.67,
+      26.28,
+      393.98,
+      450.8
+     ]
+    },
+    {
+     "class": "tray",
+     "xyxy": [
+      450.25,
+      38.91,
+      655.56,
+      326.46
+     ]
+    },
+    {
+     "class": "red_box",
+     "xyxy": [
+      461.85,
+      40.79,
+      630.63,
+      171.67
+     ]
+    },
+    {
+     "class": "yellow_box",
+     "xyxy": [
+      469.71,
+      197.29,
+      617.87,
+      296.77
+     ]
+    },
+    {
+     "class": "start_button",
+     "xyxy": [
+      482.28,
+      345.28,
+      602.56,
+      428.21
+     ]
+    }
+   ]
+  },
+  "x003_345.jpg": {
+   "excluded": true,
+   "verified": false,
+   "boxes": []
+  },
+  "x003_390.jpg": {
+   "excluded": false,
+   "verified": true,
+   "boxes": [
+    {
+     "class": "outer_box",
+     "xyxy": [
+      173.67,
+      26.28,
+      393.98,
+      450.8
+     ]
+    },
+    {
+     "class": "tray",
+     "xyxy": [
+      450.25,
+      38.91,
+      655.56,
+      326.46
+     ]
+    },
+    {
+     "class": "red_box",
+     "xyxy": [
+      230.87,
+      119.55,
+      388,
+      234.32
+     ]
+    },
+    {
+     "class": "yellow_box",
+     "xyxy": [
+      483.9,
+      202.03,
+      641.52,
+      322.03
+     ]
+    },
+    {
+     "class": "start_button",
+     "xyxy": [
+      482.28,
+      345.28,
+      602.56,
+      428.21
+     ]
+    }
+   ]
+  },
+  "x003_405.jpg": {
+   "excluded": false,
+   "verified": true,
+   "boxes": [
+    {
+     "class": "outer_box",
+     "xyxy": [
+      173.67,
+      26.28,
+      393.98,
+      450.8
+     ]
+    },
+    {
+     "class": "tray",
+     "xyxy": [
+      450.25,
+      38.91,
+      655.56,
+      326.46
+     ]
+    },
+    {
+     "class": "red_box",
+     "xyxy": [
+      230.4,
+      119.01,
+      390.31,
+      233.87
+     ]
+    },
+    {
+     "class": "yellow_box",
+     "xyxy": [
+      471.29,
+      195.72,
+      624.18,
+      307.82
+     ]
+    },
+    {
+     "class": "start_button",
+     "xyxy": [
+      482.28,
+      345.28,
+      602.56,
+      428.21
+     ]
+    }
+   ]
+  },
+  "x003_45.jpg": {
+   "excluded": false,
+   "verified": true,
+   "boxes": [
+    {
+     "class": "outer_box",
+     "xyxy": [
+      173.67,
+      26.28,
+      393.98,
+      450.8
+     ]
+    },
+    {
+     "class": "tray",
+     "xyxy": [
+      450.25,
+      38.91,
+      655.56,
+      326.46
+     ]
+    },
+    {
+     "class": "red_box",
+     "xyxy": [
+      180.24,
+      84.27,
+      387.47,
+      234.37
+     ]
+    },
+    {
+     "class": "yellow_box",
+     "xyxy": [
+      218.02,
+      252.2,
+      365.69,
+      350.02
+     ]
+    },
+    {
+     "class": "start_button",
+     "xyxy": [
+      482.28,
+      345.28,
+      602.56,
+      428.21
+     ]
+    }
+   ]
+  },
+  "x004_135.jpg": {
+   "excluded": false,
+   "verified": true,
+   "boxes": [
+    {
+     "class": "outer_box",
+     "xyxy": [
+      176.38,
+      28.09,
+      394.89,
+      453.85
+     ]
+    },
+    {
+     "class": "tray",
+     "xyxy": [
+      452.1,
+      39.57,
+      656.29,
+      326.98
+     ]
+    },
+    {
+     "class": "red_box",
+     "xyxy": [
+      484.67,
+      72.24,
+      650.43,
+      200.16
+     ]
+    },
+    {
+     "class": "yellow_box",
+     "xyxy": [
+      206.48,
+      255.72,
+      367.26,
+      364.66
+     ]
+    },
+    {
+     "class": "start_button",
+     "xyxy": [
+      483.59,
+      345.7,
+      602.99,
+      428.43
+     ]
+    }
+   ]
+  },
+  "x004_480.jpg": {
+   "excluded": false,
+   "verified": true,
+   "boxes": [
+    {
+     "class": "outer_box",
+     "xyxy": [
+      176.38,
+      28.09,
+      394.89,
+      453.85
+     ]
+    },
+    {
+     "class": "tray",
+     "xyxy": [
+      452.1,
+      39.57,
+      656.29,
+      326.98
+     ]
+    },
+    {
+     "class": "red_box",
+     "xyxy": [
+      219.44,
+      111,
+      383.05,
+      234.56
+     ]
+    },
+    {
+     "class": "yellow_box",
+     "xyxy": [
+      472.86,
+      217.82,
+      632.06,
+      323.61
+     ]
+    },
+    {
+     "class": "start_button",
+     "xyxy": [
+      483.59,
+      345.7,
+      602.99,
+      428.43
+     ]
+    }
+   ]
+  },
+  "x004_570.jpg": {
+   "excluded": true,
+   "verified": false,
+   "boxes": []
+  },
+  "x005_135.jpg": {
+   "excluded": true,
+   "verified": false,
+   "boxes": []
+  },
+  "x005_15.jpg": {
+   "excluded": false,
+   "verified": true,
+   "boxes": [
+    {
+     "class": "outer_box",
+     "xyxy": [
+      164.05,
+      15.76,
+      397.4,
+      445.42
+     ]
+    },
+    {
+     "class": "tray",
+     "xyxy": [
+      450.46,
+      39.19,
+      655.33,
+      326.66
+     ]
+    },
+    {
+     "class": "red_box",
+     "xyxy": [
+      217.52,
+      96.24,
+      381.44,
+      206.77
+     ]
+    },
+    {
+     "class": "yellow_box",
+     "xyxy": [
+      222.74,
+      257.94,
+      374.72,
+      354.26
+     ]
+    },
+    {
+     "class": "start_button",
+     "xyxy": [
+      482.35,
+      345.21,
+      602.61,
+      428.3
+     ]
+    }
+   ]
+  },
+  "x005_195.jpg": {
+   "excluded": true,
+   "verified": false,
+   "boxes": []
+  },
+  "x005_210.jpg": {
+   "excluded": true,
+   "verified": false,
+   "boxes": []
+  },
+  "x005_510.jpg": {
+   "excluded": false,
+   "verified": true,
+   "boxes": [
+    {
+     "class": "outer_box",
+     "xyxy": [
+      164.05,
+      15.76,
+      397.4,
+      445.42
+     ]
+    },
+    {
+     "class": "tray",
+     "xyxy": [
+      450.46,
+      39.19,
+      655.33,
+      326.66
+     ]
+    },
+    {
+     "class": "red_box",
+     "xyxy": [
+      216.15,
+      99.71,
+      378.95,
+      220.7
+     ]
+    },
+    {
+     "class": "yellow_box",
+     "xyxy": [
+      463.14,
+      220.14,
+      612.13,
+      324.13
+     ]
+    },
+    {
+     "class": "start_button",
+     "xyxy": [
+      482.35,
+      345.21,
+      602.61,
+      428.3
+     ]
+    }
+   ]
+  },
+  "x006_60.jpg": {
+   "excluded": true,
+   "verified": false,
+   "boxes": []
+  },
+  "x007_225.jpg": {
+   "excluded": true,
+   "verified": false,
+   "boxes": []
+  },
+  "x007_30.jpg": {
+   "excluded": false,
+   "verified": true,
+   "boxes": [
+    {
+     "class": "outer_box",
+     "xyxy": [
+      168.88,
+      23,
+      390.43,
+      450.28
+     ]
+    },
+    {
+     "class": "tray",
+     "xyxy": [
+      450.52,
+      39.07,
+      655.68,
+      326.49
+     ]
+    },
+    {
+     "class": "red_box",
+     "xyxy": [
+      209.64,
+      102.56,
+      376.71,
+      214.66
+     ]
+    },
+    {
+     "class": "yellow_box",
+     "xyxy": [
+      215.86,
+      264.32,
+      367.17,
+      378.81
+     ]
+    },
+    {
+     "class": "start_button",
+     "xyxy": [
+      484.34,
+      346.16,
+      603.55,
+      429.03
+     ]
+    }
+   ]
+  },
+  "x007_510.jpg": {
+   "excluded": true,
+   "verified": false,
+   "boxes": []
+  },
+  "x007_570.jpg": {
+   "excluded": true,
+   "verified": false,
+   "boxes": []
+  },
+  "x008_555.jpg": {
+   "excluded": true,
+   "verified": false,
+   "boxes": []
+  },
+  "x008_570.jpg": {
+   "excluded": false,
+   "verified": true,
+   "boxes": [
+    {
+     "class": "outer_box",
+     "xyxy": [
+      169.24,
+      23.23,
+      389.93,
+      451.37
+     ]
+    },
+    {
+     "class": "tray",
+     "xyxy": [
+      450.62,
+      39.13,
+      655.75,
+      326.42
+     ]
+    },
+    {
+     "class": "red_box",
+     "xyxy": [
+      185.99,
+      72.56,
+      373.56,
+      195.72
+     ]
+    },
+    {
+     "class": "yellow_box",
+     "xyxy": [
+      478.89,
+      206.63,
+      645.04,
+      308.31
+     ]
+    },
+    {
+     "class": "start_button",
+     "xyxy": [
+      486.01,
+      346.66,
+      603.56,
+      430.44
+     ]
+    }
+   ]
+  },
+  "x008_615.jpg": {
+   "excluded": false,
+   "verified": true,
+   "boxes": [
+    {
+     "class": "outer_box",
+     "xyxy": [
+      169.24,
+      23.23,
+      389.93,
+      451.37
+     ]
+    },
+    {
+     "class": "tray",
+     "xyxy": [
+      450.62,
+      39.13,
+      655.75,
+      326.42
+     ]
+    },
+    {
+     "class": "red_box",
+     "xyxy": [
+      210.45,
+      92.97,
+      374.92,
+      214.38
+     ]
+    },
+    {
+     "class": "yellow_box",
+     "xyxy": [
+      479.09,
+      206.38,
+      623.01,
+      305.67
+     ]
+    },
+    {
+     "class": "start_button",
+     "xyxy": [
+      486.01,
+      346.66,
+      603.56,
+      430.44
+     ]
+    }
+   ]
+  },
+  "x010_150.jpg": {
+   "excluded": false,
+   "verified": true,
+   "boxes": [
+    {
+     "class": "outer_box",
+     "xyxy": [
+      159.83,
+      26.56,
+      382.16,
+      453.83
+     ]
+    },
+    {
+     "class": "tray",
+     "xyxy": [
+      450.84,
+      38.86,
+      655.41,
+      326.67
+     ]
+    },
+    {
+     "class": "red_box",
+     "xyxy": [
+      468.44,
+      57,
+      630.1,
+      175.9
+     ]
+    },
+    {
+     "class": "yellow_box",
+     "xyxy": [
+      209.1,
+      260.55,
+      345.99,
+      357.56
+     ]
+    },
+    {
+     "class": "start_button",
+     "xyxy": [
+      478.11,
+      343.07,
+      600.1,
+      427.24
+     ]
+    }
+   ]
+  },
+  "x010_195.jpg": {
+   "excluded": false,
+   "verified": true,
+   "boxes": [
+    {
+     "class": "outer_box",
+     "xyxy": [
+      159.83,
+      26.56,
+      382.16,
+      453.83
+     ]
+    },
+    {
+     "class": "tray",
+     "xyxy": [
+      450.84,
+      38.86,
+      655.41,
+      326.67
+     ]
+    },
+    {
+     "class": "red_box",
+     "xyxy": [
+      468.37,
+      57.12,
+      630.25,
+      176
+     ]
+    },
+    {
+     "class": "yellow_box",
+     "xyxy": [
+      153.53,
+      200.28,
+      371.72,
+      339.6
+     ]
+    },
+    {
+     "class": "start_button",
+     "xyxy": [
+      478.11,
+      343.07,
+      600.1,
+      427.24
+     ]
+    }
+   ]
+  },
+  "x010_45.jpg": {
+   "excluded": true,
+   "verified": false,
+   "boxes": []
+  },
+  "x010_450.jpg": {
+   "excluded": false,
+   "verified": true,
+   "boxes": [
+    {
+     "class": "outer_box",
+     "xyxy": [
+      159.83,
+      26.56,
+      382.16,
+      453.83
+     ]
+    },
+    {
+     "class": "tray",
+     "xyxy": [
+      450.84,
+      38.86,
+      655.41,
+      326.67
+     ]
+    },
+    {
+     "class": "red_box",
+     "xyxy": [
+      238.99,
+      5.57,
+      429.55,
+      188.37
+     ]
+    },
+    {
+     "class": "yellow_box",
+     "xyxy": [
+      472.99,
+      219.27,
+      641.94,
+      310
+     ]
+    },
+    {
+     "class": "start_button",
+     "xyxy": [
+      478.11,
+      343.07,
+      600.1,
+      427.24
+     ]
+    }
+   ]
+  },
+  "x010_465.jpg": {
+   "excluded": false,
+   "verified": true,
+   "boxes": [
+    {
+     "class": "outer_box",
+     "xyxy": [
+      159.83,
+      26.56,
+      382.16,
+      453.83
+     ]
+    },
+    {
+     "class": "tray",
+     "xyxy": [
+      450.84,
+      38.86,
+      655.41,
+      326.67
+     ]
+    },
+    {
+     "class": "red_box",
+     "xyxy": [
+      185.99,
+      85.19,
+      376.71,
+      206.77
+     ]
+    },
+    {
+     "class": "yellow_box",
+     "xyxy": [
+      473.94,
+      209.7,
+      642.04,
+      318.77
+     ]
+    },
+    {
+     "class": "start_button",
+     "xyxy": [
+      478.11,
+      343.07,
+      600.1,
+      427.24
+     ]
+    }
+   ]
+  },
+  "x010_495.jpg": {
+   "excluded": false,
+   "verified": true,
+   "boxes": [
+    {
+     "class": "outer_box",
+     "xyxy": [
+      159.83,
+      26.56,
+      382.16,
+      453.83
+     ]
+    },
+    {
+     "class": "tray",
+     "xyxy": [
+      450.84,
+      38.86,
+      655.41,
+      326.67
+     ]
+    },
+    {
+     "class": "red_box",
+     "xyxy": [
+      198.69,
+      93.24,
+      362.88,
+      213.66
+     ]
+    },
+    {
+     "class": "yellow_box",
+     "xyxy": [
+      474.07,
+      210.17,
+      621.6,
+      314.63
+     ]
+    },
+    {
+     "class": "start_button",
+     "xyxy": [
+      478.11,
+      343.07,
+      600.1,
+      427.24
+     ]
+    }
+   ]
+  },
+  "x010_525.jpg": {
+   "excluded": false,
+   "verified": true,
+   "boxes": [
+    {
+     "class": "outer_box",
+     "xyxy": [
+      159.83,
+      26.56,
+      382.16,
+      453.83
+     ]
+    },
+    {
+     "class": "tray",
+     "xyxy": [
+      450.84,
+      38.86,
+      655.41,
+      326.67
+     ]
+    },
+    {
+     "class": "red_box",
+     "xyxy": [
+      198.32,
+      93.13,
+      362.46,
+      213.3
+     ]
+    },
+    {
+     "class": "yellow_box",
+     "xyxy": [
+      205.1,
+      238.05,
+      340.48,
+      343.25
+     ]
+    },
+    {
+     "class": "start_button",
+     "xyxy": [
+      478.11,
+      343.07,
+      600.1,
+      427.24
+     ]
+    }
+   ]
+  },
+  "x010_540.jpg": {
+   "excluded": false,
+   "verified": true,
+   "boxes": [
+    {
+     "class": "outer_box",
+     "xyxy": [
+      159.83,
+      26.56,
+      382.16,
+      453.83
+     ]
+    },
+    {
+     "class": "tray",
+     "xyxy": [
+      450.84,
+      38.86,
+      655.41,
+      326.67
+     ]
+    },
+    {
+     "class": "red_box",
+     "xyxy": [
+      198.71,
+      94.04,
+      362.45,
+      214.31
+     ]
+    },
+    {
+     "class": "yellow_box",
+     "xyxy": [
+      188.24,
+      253.62,
+      327.52,
+      350.25
+     ]
+    },
+    {
+     "class": "start_button",
+     "xyxy": [
+      478.11,
+      343.07,
+      600.1,
+      427.24
+     ]
+    }
+   ]
+  },
+  "x010_75.jpg": {
+   "excluded": false,
+   "verified": true,
+   "boxes": [
+    {
+     "class": "outer_box",
+     "xyxy": [
+      159.83,
+      26.56,
+      382.16,
+      453.83
+     ]
+    },
+    {
+     "class": "tray",
+     "xyxy": [
+      450.84,
+      38.86,
+      655.41,
+      326.67
+     ]
+    },
+    {
+     "class": "red_box",
+     "xyxy": [
+      439.22,
+      9.79,
+      639.41,
+      174.64
+     ]
+    },
+    {
+     "class": "yellow_box",
+     "xyxy": [
+      209.31,
+      258.48,
+      368.23,
+      356.84
+     ]
+    },
+    {
+     "class": "start_button",
+     "xyxy": [
+      478.11,
+      343.07,
+      600.1,
+      427.24
+     ]
+    }
+   ]
+  },
+  "x011_120.jpg": {
+   "excluded": false,
+   "verified": true,
+   "boxes": [
+    {
+     "class": "outer_box",
+     "xyxy": [
+      160.42,
+      27.56,
+      381.95,
+      455.42
+     ]
+    },
+    {
+     "class": "tray",
+     "xyxy": [
+      450.13,
+      38.96,
+      655.44,
+      326.65
+     ]
+    },
+    {
+     "class": "red_box",
+     "xyxy": [
+      446.68,
+      74.64,
+      612.51,
+      202.54
+     ]
+    },
+    {
+     "class": "yellow_box",
+     "xyxy": [
+      198.47,
+      249.01,
+      324.31,
+      348.44
+     ]
+    },
+    {
+     "class": "start_button",
+     "xyxy": [
+      478.24,
+      343.02,
+      600.51,
+      427.37
+     ]
+    }
+   ]
+  },
+  "x011_15.jpg": {
+   "excluded": false,
+   "verified": true,
+   "boxes": [
+    {
+     "class": "outer_box",
+     "xyxy": [
+      160.42,
+      27.56,
+      381.95,
+      455.42
+     ]
+    },
+    {
+     "class": "tray",
+     "xyxy": [
+      450.13,
+      38.96,
+      655.44,
+      326.65
+     ]
+    },
+    {
+     "class": "red_box",
+     "xyxy": [
+      203.92,
+      91.55,
+      350.65,
+      207.04
+     ]
+    },
+    {
+     "class": "yellow_box",
+     "xyxy": [
+      198.76,
+      249.48,
+      356.39,
+      348.36
+     ]
+    },
+    {
+     "class": "start_button",
+     "xyxy": [
+      478.24,
+      343.02,
+      600.51,
+      427.37
+     ]
+    }
+   ]
+  },
+  "x011_165.jpg": {
+   "excluded": false,
+   "verified": true,
+   "boxes": [
+    {
+     "class": "outer_box",
+     "xyxy": [
+      160.42,
+      27.56,
+      381.95,
+      455.42
+     ]
+    },
+    {
+     "class": "tray",
+     "xyxy": [
+      450.13,
+      38.96,
+      655.44,
+      326.65
+     ]
+    },
+    {
+     "class": "red_box",
+     "xyxy": [
+      445.87,
+      73.87,
+      612.99,
+      203.9
+     ]
+    },
+    {
+     "class": "yellow_box",
+     "xyxy": [
+      322.52,
+      218.2,
+      543.79,
+      353.16
+     ]
+    },
+    {
+     "class": "start_button",
+     "xyxy": [
+      478.24,
+      343.02,
+      600.51,
+      427.37
+     ]
+    }
+   ]
+  },
+  "x011_30.jpg": {
+   "excluded": false,
+   "verified": true,
+   "boxes": [
+    {
+     "class": "outer_box",
+     "xyxy": [
+      160.42,
+      27.56,
+      381.95,
+      455.42
+     ]
+    },
+    {
+     "class": "tray",
+     "xyxy": [
+      450.13,
+      38.96,
+      655.44,
+      326.65
+     ]
+    },
+    {
+     "class": "red_box",
+     "xyxy": [
+      187.24,
+      86.56,
+      350.15,
+      198.88
+     ]
+    },
+    {
+     "class": "yellow_box",
+     "xyxy": [
+      198.48,
+      248.56,
+      357.41,
+      348.25
+     ]
+    },
+    {
+     "class": "start_button",
+     "xyxy": [
+      478.24,
+      343.02,
+      600.51,
+      427.37
+     ]
+    }
+   ]
+  },
+  "x011_405.jpg": {
+   "excluded": true,
+   "verified": false,
+   "boxes": []
+  },
+  "x011_420.jpg": {
+   "excluded": false,
+   "verified": true,
+   "boxes": [
+    {
+     "class": "outer_box",
+     "xyxy": [
+      160.42,
+      27.56,
+      381.95,
+      455.42
+     ]
+    },
+    {
+     "class": "tray",
+     "xyxy": [
+      450.13,
+      38.96,
+      655.44,
+      326.65
+     ]
+    },
+    {
+     "class": "red_box",
+     "xyxy": [
+      210.43,
+      84.69,
+      373.22,
+      205.92
+     ]
+    },
+    {
+     "class": "yellow_box",
+     "xyxy": [
+      545.38,
+      229.63,
+      640.59,
+      335.33
+     ]
+    },
+    {
+     "class": "start_button",
+     "xyxy": [
+      478.24,
+      343.02,
+      600.51,
+      427.37
+     ]
+    }
+   ]
+  },
+  "x011_45.jpg": {
+   "excluded": false,
+   "verified": true,
+   "boxes": [
+    {
+     "class": "outer_box",
+     "xyxy": [
+      160.42,
+      27.56,
+      381.95,
+      455.42
+     ]
+    },
+    {
+     "class": "tray",
+     "xyxy": [
+      450.13,
+      38.96,
+      655.44,
+      326.65
+     ]
+    },
+    {
+     "class": "red_box",
+     "xyxy": [
+      253.69,
+      45.9,
+      487.99,
+      228.05
+     ]
+    },
+    {
+     "class": "yellow_box",
+     "xyxy": [
+      198.64,
+      246.33,
+      358.1,
+      348.32
+     ]
+    },
+    {
+     "class": "start_button",
+     "xyxy": [
+      478.24,
+      343.02,
+      600.51,
+      427.37
+     ]
+    }
+   ]
+  },
+  "x011_510.jpg": {
+   "excluded": false,
+   "verified": true,
+   "boxes": [
+    {
+     "class": "outer_box",
+     "xyxy": [
+      160.42,
+      27.56,
+      381.95,
+      455.42
+     ]
+    },
+    {
+     "class": "tray",
+     "xyxy": [
+      450.13,
+      38.96,
+      655.44,
+      326.65
+     ]
+    },
+    {
+     "class": "red_box",
+     "xyxy": [
+      208.84,
+      82.3,
+      378.44,
+      205.64
+     ]
+    },
+    {
+     "class": "yellow_box",
+     "xyxy": [
+      209.75,
+      258.32,
+      369.55,
+      356.93
+     ]
+    },
+    {
+     "class": "start_button",
+     "xyxy": [
+      478.24,
+      343.02,
+      600.51,
+      427.37
+     ]
+    }
+   ]
+  },
+  "x011_60.jpg": {
+   "excluded": false,
+   "verified": true,
+   "boxes": [
+    {
+     "class": "outer_box",
+     "xyxy": [
+      160.42,
+      27.56,
+      381.95,
+      455.42
+     ]
+    },
+    {
+     "class": "tray",
+     "xyxy": [
+      450.13,
+      38.96,
+      655.44,
+      326.65
+     ]
+    },
+    {
+     "class": "red_box",
+     "xyxy": [
+      414.59,
+      18.25,
+      650.1,
+      207.94
+     ]
+    },
+    {
+     "class": "yellow_box",
+     "xyxy": [
+      198.71,
+      246.12,
+      358.26,
+      348.29
+     ]
+    },
+    {
+     "class": "start_button",
+     "xyxy": [
+      478.24,
+      343.02,
+      600.51,
+      427.37
+     ]
+    }
+   ]
+  },
+  "x012_180.jpg": {
+   "excluded": false,
+   "verified": true,
+   "boxes": [
+    {
+     "class": "outer_box",
+     "xyxy": [
+      170.67,
+      23.62,
+      389.89,
+      450.84
+     ]
+    },
+    {
+     "class": "tray",
+     "xyxy": [
+      450.48,
+      38.86,
+      655.8,
+      326.16
+     ]
+    },
+    {
+     "class": "red_box",
+     "xyxy": [
+      475.26,
+      27.9,
+      641.06,
+      152.51
+     ]
+    },
+    {
+     "class": "yellow_box",
+     "xyxy": [
+      461.34,
+      119.73,
+      574.53,
+      254.67
+     ]
+    },
+    {
+     "class": "start_button",
+     "xyxy": [
+      486.82,
+      348.71,
+      603.93,
+      432.96
+     ]
+    }
+   ]
+  },
+  "x012_30.jpg": {
+   "excluded": false,
+   "verified": true,
+   "boxes": [
+    {
+     "class": "outer_box",
+     "xyxy": [
+      170.67,
+      23.62,
+      389.89,
+      450.84
+     ]
+    },
+    {
+     "class": "tray",
+     "xyxy": [
+      450.48,
+      38.86,
+      655.8,
+      326.16
+     ]
+    },
+    {
+     "class": "red_box",
+     "xyxy": [
+      218.96,
+      100.64,
+      385.4,
+      215.13
+     ]
+    },
+    {
+     "class": "yellow_box",
+     "xyxy": [
+      211.51,
+      269.1,
+      369.01,
+      368.67
+     ]
+    },
+    {
+     "class": "start_button",
+     "xyxy": [
+      486.82,
+      348.71,
+      603.93,
+      432.96
+     ]
+    }
+   ]
+  },
+  "x012_435.jpg": {
+   "excluded": false,
+   "verified": true,
+   "boxes": [
+    {
+     "class": "outer_box",
+     "xyxy": [
+      170.67,
+      23.62,
+      389.89,
+      450.84
+     ]
+    },
+    {
+     "class": "tray",
+     "xyxy": [
+      450.48,
+      38.86,
+      655.8,
+      326.16
+     ]
+    },
+    {
+     "class": "red_box",
+     "xyxy": [
+      471.93,
+      29.57,
+      641.33,
+      157.83
+     ]
+    },
+    {
+     "class": "yellow_box",
+     "xyxy": [
+      479.91,
+      186.76,
+      603.43,
+      289.27
+     ]
+    },
+    {
+     "class": "start_button",
+     "xyxy": [
+      486.82,
+      348.71,
+      603.93,
+      432.96
+     ]
+    }
+   ]
+  },
+  "x012_60.jpg": {
+   "excluded": false,
+   "verified": true,
+   "boxes": [
+    {
+     "class": "outer_box",
+     "xyxy": [
+      170.67,
+      23.62,
+      389.89,
+      450.84
+     ]
+    },
+    {
+     "class": "tray",
+     "xyxy": [
+      450.48,
+      38.86,
+      655.8,
+      326.16
+     ]
+    },
+    {
+     "class": "red_box",
+     "xyxy": [
+      228.14,
+      2.96,
+      413.21,
+      217.02
+     ]
+    },
+    {
+     "class": "yellow_box",
+     "xyxy": [
+      211.36,
+      259.13,
+      372.57,
+      368.82
+     ]
+    },
+    {
+     "class": "start_button",
+     "xyxy": [
+      486.82,
+      348.71,
+      603.93,
+      432.96
+     ]
+    }
+   ]
+  },
+  "x018_180.jpg": {
+   "excluded": true,
+   "verified": false,
+   "boxes": []
+  },
+  "x018_240.jpg": {
+   "excluded": false,
+   "verified": true,
+   "boxes": [
+    {
+     "class": "outer_box",
+     "xyxy": [
+      158.84,
+      29.06,
+      382.5,
+      459.14
+     ]
+    },
+    {
+     "class": "tray",
+     "xyxy": [
+      450.91,
+      38.87,
+      655.35,
+      326.66
+     ]
+    },
+    {
+     "class": "red_box",
+     "xyxy": [
+      478.56,
+      80.7,
+      645.55,
+      211.29
+     ]
+    },
+    {
+     "class": "yellow_box",
+     "xyxy": [
+      273.96,
+      154.99,
+      474.13,
+      355.38
+     ]
+    },
+    {
+     "class": "start_button",
+     "xyxy": [
+      480.31,
+      344.85,
+      601.75,
+      427.95
+     ]
+    }
+   ]
+  },
+  "x018_255.jpg": {
+   "excluded": false,
+   "verified": true,
+   "boxes": [
+    {
+     "class": "outer_box",
+     "xyxy": [
+      158.84,
+      29.06,
+      382.5,
+      459.14
+     ]
+    },
+    {
+     "class": "tray",
+     "xyxy": [
+      450.91,
+      38.87,
+      655.35,
+      326.66
+     ]
+    },
+    {
+     "class": "red_box",
+     "xyxy": [
+      481.26,
+      80.66,
+      646.02,
+      211.87
+     ]
+    },
+    {
+     "class": "yellow_box",
+     "xyxy": [
+      336.18,
+      142.23,
+      600.14,
+      345.73
+     ]
+    },
+    {
+     "class": "start_button",
+     "xyxy": [
+      480.31,
+      344.85,
+      601.75,
+      427.95
+     ]
+    }
+   ]
+  },
+  "x018_480.jpg": {
+   "excluded": false,
+   "verified": true,
+   "boxes": [
+    {
+     "class": "outer_box",
+     "xyxy": [
+      158.84,
+      29.06,
+      382.5,
+      459.14
+     ]
+    },
+    {
+     "class": "tray",
+     "xyxy": [
+      450.91,
+      38.87,
+      655.35,
+      326.66
+     ]
+    },
+    {
+     "class": "red_box",
+     "xyxy": [
+      183.06,
+      29.89,
+      374.17,
+      199.32
+     ]
+    },
+    {
+     "class": "yellow_box",
+     "xyxy": [
+      495.17,
+      225.4,
+      647.29,
+      328.02
+     ]
+    },
+    {
+     "class": "start_button",
+     "xyxy": [
+      480.31,
+      344.85,
+      601.75,
+      427.95
+     ]
+    }
+   ]
+  },
+  "x018_540.jpg": {
+   "excluded": false,
+   "verified": true,
+   "boxes": [
+    {
+     "class": "outer_box",
+     "xyxy": [
+      158.84,
+      29.06,
+      382.5,
+      459.14
+     ]
+    },
+    {
+     "class": "tray",
+     "xyxy": [
+      450.91,
+      38.87,
+      655.35,
+      326.66
+     ]
+    },
+    {
+     "class": "red_box",
+     "xyxy": [
+      205.47,
+      110.02,
+      366.97,
+      227.12
+     ]
+    },
+    {
+     "class": "yellow_box",
+     "xyxy": [
+      481.49,
+      226.71,
+      582.38,
+      326.92
+     ]
+    },
+    {
+     "class": "start_button",
+     "xyxy": [
+      480.31,
+      344.85,
+      601.75,
+      427.95
+     ]
+    }
+   ]
+  },
+  "x018_570.jpg": {
+   "excluded": false,
+   "verified": true,
+   "boxes": [
+    {
+     "class": "outer_box",
+     "xyxy": [
+      158.84,
+      29.06,
+      382.5,
+      459.14
+     ]
+    },
+    {
+     "class": "tray",
+     "xyxy": [
+      450.91,
+      38.87,
+      655.35,
+      326.66
+     ]
+    },
+    {
+     "class": "red_box",
+     "xyxy": [
+      206.76,
+      109.78,
+      367.64,
+      227.15
+     ]
+    },
+    {
+     "class": "yellow_box",
+     "xyxy": [
+      474.53,
+      223.04,
+      558.84,
+      323.37
+     ]
+    },
+    {
+     "class": "start_button",
+     "xyxy": [
+      480.31,
+      344.85,
+      601.75,
+      427.95
+     ]
+    }
+   ]
+  },
+  "x018_585.jpg": {
+   "excluded": false,
+   "verified": true,
+   "boxes": [
+    {
+     "class": "outer_box",
+     "xyxy": [
+      158.84,
+      29.06,
+      382.5,
+      459.14
+     ]
+    },
+    {
+     "class": "tray",
+     "xyxy": [
+      450.91,
+      38.87,
+      655.35,
+      326.66
+     ]
+    },
+    {
+     "class": "red_box",
+     "xyxy": [
+      206.71,
+      110.01,
+      366.51,
+      227.46
+     ]
+    },
+    {
+     "class": "yellow_box",
+     "xyxy": [
+      171.7,
+      249.1,
+      269.09,
+      368.11
+     ]
+    },
+    {
+     "class": "start_button",
+     "xyxy": [
+      480.31,
+      344.85,
+      601.75,
+      427.95
+     ]
+    }
+   ]
+  },
+  "x018_60.jpg": {
+   "excluded": false,
+   "verified": true,
+   "boxes": [
+    {
+     "class": "outer_box",
+     "xyxy": [
+      158.84,
+      29.06,
+      382.5,
+      459.14
+     ]
+    },
+    {
+     "class": "tray",
+     "xyxy": [
+      450.91,
+      38.87,
+      655.35,
+      326.66
+     ]
+    },
+    {
+     "class": "red_box",
+     "xyxy": [
+      137.52,
+      72.04,
+      337.73,
+      233.51
+     ]
+    },
+    {
+     "class": "yellow_box",
+     "xyxy": [
+      202.2,
+      282.1,
+      361.67,
+      379.89
+     ]
+    },
+    {
+     "class": "start_button",
+     "xyxy": [
+      480.31,
+      344.85,
+      601.75,
+      427.95
+     ]
+    }
+   ]
+  },
+  "x019_15.jpg": {
+   "excluded": true,
+   "verified": false,
+   "boxes": []
+  },
+  "x019_150.jpg": {
+   "excluded": true,
+   "verified": false,
+   "boxes": []
+  },
+  "x019_180.jpg": {
+   "excluded": false,
+   "verified": true,
+   "boxes": [
+    {
+     "class": "outer_box",
+     "xyxy": [
+      158.81,
+      28.9,
+      382.37,
+      455.81
+     ]
+    },
+    {
+     "class": "tray",
+     "xyxy": [
+      451.06,
+      39.09,
+      655.46,
+      326.86
+     ]
+    },
+    {
+     "class": "red_box",
+     "xyxy": [
+      467.59,
+      75.21,
+      630.34,
+      198.59
+     ]
+    },
+    {
+     "class": "yellow_box",
+     "xyxy": [
+      149.1,
+      214.73,
+      370.05,
+      367.5
+     ]
+    },
+    {
+     "class": "start_button",
+     "xyxy": [
+      480.45,
+      344.79,
+      602.04,
+      428.06
+     ]
+    }
+   ]
+  },
+  "x019_195.jpg": {
+   "excluded": false,
+   "verified": true,
+   "boxes": [
+    {
+     "class": "outer_box",
+     "xyxy": [
+      158.81,
+      28.9,
+      382.37,
+      455.81
+     ]
+    },
+    {
+     "class": "tray",
+     "xyxy": [
+      451.06,
+      39.09,
+      655.46,
+      326.86
+     ]
+    },
+    {
+     "class": "red_box",
+     "xyxy": [
+      467.09,
+      74.22,
+      631.13,
+      198.61
+     ]
+    },
+    {
+     "class": "yellow_box",
+     "xyxy": [
+      210.56,
+      206.88,
+      440.38,
+      361.27
+     ]
+    },
+    {
+     "class": "start_button",
+     "xyxy": [
+      480.45,
+      344.79,
+      602.04,
+      428.06
+     ]
+    }
+   ]
+  },
+  "x019_210.jpg": {
+   "excluded": false,
+   "verified": true,
+   "boxes": [
+    {
+     "class": "outer_box",
+     "xyxy": [
+      158.81,
+      28.9,
+      382.37,
+      455.81
+     ]
+    },
+    {
+     "class": "tray",
+     "xyxy": [
+      451.06,
+      39.09,
+      655.46,
+      326.86
+     ]
+    },
+    {
+     "class": "red_box",
+     "xyxy": [
+      467.45,
+      74.47,
+      631.37,
+      183.32
+     ]
+    },
+    {
+     "class": "yellow_box",
+     "xyxy": [
+      408.01,
+      169.13,
+      612.4,
+      309.8
+     ]
+    },
+    {
+     "class": "start_button",
+     "xyxy": [
+      480.45,
+      344.79,
+      602.04,
+      428.06
+     ]
+    }
+   ]
+  },
+  "x019_45.jpg": {
+   "excluded": false,
+   "verified": true,
+   "boxes": [
+    {
+     "class": "outer_box",
+     "xyxy": [
+      158.81,
+      28.9,
+      382.37,
+      455.81
+     ]
+    },
+    {
+     "class": "tray",
+     "xyxy": [
+      451.06,
+      39.09,
+      655.46,
+      326.86
+     ]
+    },
+    {
+     "class": "red_box",
+     "xyxy": [
+      198.81,
+      51.51,
+      405.25,
+      229.25
+     ]
+    },
+    {
+     "class": "yellow_box",
+     "xyxy": [
+      204.85,
+      270.57,
+      364.62,
+      370.45
+     ]
+    },
+    {
+     "class": "start_button",
+     "xyxy": [
+      480.45,
+      344.79,
+      602.04,
+      428.06
+     ]
+    }
+   ]
+  },
+  "x019_495.jpg": {
+   "excluded": false,
+   "verified": true,
+   "boxes": [
+    {
+     "class": "outer_box",
+     "xyxy": [
+      158.81,
+      28.9,
+      382.37,
+      455.81
+     ]
+    },
+    {
+     "class": "tray",
+     "xyxy": [
+      451.06,
+      39.09,
+      655.46,
+      326.86
+     ]
+    },
+    {
+     "class": "red_box",
+     "xyxy": [
+      195.08,
+      97.19,
+      357.92,
+      216.3
+     ]
+    },
+    {
+     "class": "yellow_box",
+     "xyxy": [
+      471.05,
+      224.85,
+      557.64,
+      326.9
+     ]
+    },
+    {
+     "class": "start_button",
+     "xyxy": [
+      480.45,
+      344.79,
+      602.04,
+      428.06
+     ]
+    }
+   ]
+  },
+  "x019_60.jpg": {
+   "excluded": false,
+   "verified": true,
+   "boxes": [
+    {
+     "class": "outer_box",
+     "xyxy": [
+      158.81,
+      28.9,
+      382.37,
+      455.81
+     ]
+    },
+    {
+     "class": "tray",
+     "xyxy": [
+      451.06,
+      39.09,
+      655.46,
+      326.86
+     ]
+    },
+    {
+     "class": "red_box",
+     "xyxy": [
+      326.73,
+      42.6,
+      530.08,
+      222.79
+     ]
+    },
+    {
+     "class": "yellow_box",
+     "xyxy": [
+      204.9,
+      269.21,
+      365.42,
+      370.46
+     ]
+    },
+    {
+     "class": "start_button",
+     "xyxy": [
+      480.45,
+      344.79,
+      602.04,
+      428.06
+     ]
+    }
+   ]
+  },
+  "x019_75.jpg": {
+   "excluded": false,
+   "verified": true,
+   "boxes": [
+    {
+     "class": "outer_box",
+     "xyxy": [
+      158.81,
+      28.9,
+      382.37,
+      455.81
+     ]
+    },
+    {
+     "class": "tray",
+     "xyxy": [
+      451.06,
+      39.09,
+      655.46,
+      326.86
+     ]
+    },
+    {
+     "class": "red_box",
+     "xyxy": [
+      391.44,
+      30.76,
+      588.2,
+      206.81
+     ]
+    },
+    {
+     "class": "yellow_box",
+     "xyxy": [
+      204.8,
+      269.17,
+      365.44,
+      370.4
+     ]
+    },
+    {
+     "class": "start_button",
+     "xyxy": [
+      480.45,
+      344.79,
+      602.04,
+      428.06
+     ]
+    }
+   ]
+  },
+  "x020_120.jpg": {
+   "excluded": false,
+   "verified": true,
+   "boxes": [
+    {
+     "class": "outer_box",
+     "xyxy": [
+      158.98,
+      29.49,
+      382.92,
+      456.93
+     ]
+    },
+    {
+     "class": "tray",
+     "xyxy": [
+      449.93,
+      38.88,
+      655.63,
+      326.7
+     ]
+    },
+    {
+     "class": "red_box",
+     "xyxy": [
+      448.39,
+      91.23,
+      612.96,
+      215.72
+     ]
+    },
+    {
+     "class": "yellow_box",
+     "xyxy": [
+      199.71,
+      275.81,
+      280.44,
+      377.28
+     ]
+    },
+    {
+     "class": "start_button",
+     "xyxy": [
+      480.46,
+      344.79,
+      602.09,
+      428.37
+     ]
+    }
+   ]
+  },
+  "x020_420.jpg": {
+   "excluded": false,
+   "verified": true,
+   "boxes": [
+    {
+     "class": "outer_box",
+     "xyxy": [
+      158.98,
+      29.49,
+      382.92,
+      456.93
+     ]
+    },
+    {
+     "class": "tray",
+     "xyxy": [
+      449.93,
+      38.88,
+      655.63,
+      326.7
+     ]
+    },
+    {
+     "class": "red_box",
+     "xyxy": [
+      187.95,
+      5.76,
+      318.32,
+      198.05
+     ]
+    },
+    {
+     "class": "yellow_box",
+     "xyxy": [
+      515.07,
+      231.48,
+      627.49,
+      341.07
+     ]
+    },
+    {
+     "class": "start_button",
+     "xyxy": [
+      480.46,
+      344.79,
+      602.09,
+      428.37
+     ]
+    }
+   ]
+  },
+  "x020_60.jpg": {
+   "excluded": false,
+   "verified": true,
+   "boxes": [
+    {
+     "class": "outer_box",
+     "xyxy": [
+      158.98,
+      29.49,
+      382.92,
+      456.93
+     ]
+    },
+    {
+     "class": "tray",
+     "xyxy": [
+      449.93,
+      38.88,
+      655.63,
+      326.7
+     ]
+    },
+    {
+     "class": "red_box",
+     "xyxy": [
+      206.52,
+      43.27,
+      431.35,
+      209.54
+     ]
+    },
+    {
+     "class": "yellow_box",
+     "xyxy": [
+      200.02,
+      268.84,
+      361.22,
+      376.9
+     ]
+    },
+    {
+     "class": "start_button",
+     "xyxy": [
+      480.46,
+      344.79,
+      602.09,
+      428.37
+     ]
+    }
+   ]
+  },
+  "x021_210.jpg": {
+   "excluded": false,
+   "verified": true,
+   "boxes": [
+    {
+     "class": "outer_box",
+     "xyxy": [
+      158.21,
+      29.13,
+      383.18,
+      457.1
+     ]
+    },
+    {
+     "class": "tray",
+     "xyxy": [
+      450.53,
+      38.96,
+      655.53,
+      326.46
+     ]
+    },
+    {
+     "class": "red_box",
+     "xyxy": [
+      457.19,
+      81.6,
+      621.04,
+      200.34
+     ]
+    },
+    {
+     "class": "yellow_box",
+     "xyxy": [
+      237.06,
+      216.32,
+      431.96,
+      369.08
+     ]
+    },
+    {
+     "class": "start_button",
+     "xyxy": [
+      480.7,
+      344.99,
+      602.06,
+      428.18
+     ]
+    }
+   ]
+  },
+  "x021_225.jpg": {
+   "excluded": false,
+   "verified": true,
+   "boxes": [
+    {
+     "class": "outer_box",
+     "xyxy": [
+      158.21,
+      29.13,
+      383.18,
+      457.1
+     ]
+    },
+    {
+     "class": "tray",
+     "xyxy": [
+      450.53,
+      38.96,
+      655.53,
+      326.46
+     ]
+    },
+    {
+     "class": "red_box",
+     "xyxy": [
+      456.97,
+      81.43,
+      621.7,
+      200.99
+     ]
+    },
+    {
+     "class": "yellow_box",
+     "xyxy": [
+      308,
+      196.9,
+      532.86,
+      351.24
+     ]
+    },
+    {
+     "class": "start_button",
+     "xyxy": [
+      480.7,
+      344.99,
+      602.06,
+      428.18
+     ]
+    }
+   ]
+  },
+  "x021_465.jpg": {
+   "excluded": false,
+   "verified": true,
+   "boxes": [
+    {
+     "class": "outer_box",
+     "xyxy": [
+      158.21,
+      29.13,
+      383.18,
+      457.1
+     ]
+    },
+    {
+     "class": "tray",
+     "xyxy": [
+      450.53,
+      38.96,
+      655.53,
+      326.46
+     ]
+    },
+    {
+     "class": "red_box",
+     "xyxy": [
+      330.07,
+      0.85,
+      455.87,
+      163.57
+     ]
+    },
+    {
+     "class": "yellow_box",
+     "xyxy": [
+      454.37,
+      228.76,
+      563.25,
+      326.93
+     ]
+    },
+    {
+     "class": "start_button",
+     "xyxy": [
+      480.7,
+      344.99,
+      602.06,
+      428.18
+     ]
+    }
+   ]
+  },
+  "x021_60.jpg": {
+   "excluded": false,
+   "verified": true,
+   "boxes": [
+    {
+     "class": "outer_box",
+     "xyxy": [
+      158.21,
+      29.13,
+      383.18,
+      457.1
+     ]
+    },
+    {
+     "class": "tray",
+     "xyxy": [
+      450.53,
+      38.96,
+      655.53,
+      326.46
+     ]
+    },
+    {
+     "class": "red_box",
+     "xyxy": [
+      301.63,
+      24.27,
+      555.89,
+      232.46
+     ]
+    },
+    {
+     "class": "yellow_box",
+     "xyxy": [
+      208.65,
+      269.86,
+      367.66,
+      374.3
+     ]
+    },
+    {
+     "class": "start_button",
+     "xyxy": [
+      480.7,
+      344.99,
+      602.06,
+      428.18
+     ]
+    }
+   ]
+  },
+  "x021_75.jpg": {
+   "excluded": false,
+   "verified": true,
+   "boxes": [
+    {
+     "class": "outer_box",
+     "xyxy": [
+      158.21,
+      29.13,
+      383.18,
+      457.1
+     ]
+    },
+    {
+     "class": "tray",
+     "xyxy": [
+      450.53,
+      38.96,
+      655.53,
+      326.46
+     ]
+    },
+    {
+     "class": "red_box",
+     "xyxy": [
+      337.03,
+      20.62,
+      594.76,
+      226.26
+     ]
+    },
+    {
+     "class": "yellow_box",
+     "xyxy": [
+      208.15,
+      270.04,
+      367.69,
+      374.58
+     ]
+    },
+    {
+     "class": "start_button",
+     "xyxy": [
+      480.7,
+      344.99,
+      602.06,
+      428.18
+     ]
+    }
+   ]
+  },
+  "x021_90.jpg": {
+   "excluded": false,
+   "verified": true,
+   "boxes": [
+    {
+     "class": "outer_box",
+     "xyxy": [
+      158.21,
+      29.13,
+      383.18,
+      457.1
+     ]
+    },
+    {
+     "class": "tray",
+     "xyxy": [
+      450.53,
+      38.96,
+      655.53,
+      326.46
+     ]
+    },
+    {
+     "class": "red_box",
+     "xyxy": [
+      432.61,
+      33.66,
+      640.99,
+      208.87
+     ]
+    },
+    {
+     "class": "yellow_box",
+     "xyxy": [
+      208,
+      270.1,
+      367.68,
+      374.62
+     ]
+    },
+    {
+     "class": "start_button",
+     "xyxy": [
+      480.7,
+      344.99,
+      602.06,
+      428.18
+     ]
+    }
+   ]
+  },
+  "x026_150.jpg": {
+   "excluded": false,
+   "verified": true,
+   "boxes": [
+    {
+     "class": "outer_box",
+     "xyxy": [
+      99.94,
+      21.3,
+      333.79,
+      450.77
+     ]
+    },
+    {
+     "class": "tray",
+     "xyxy": [
+      416.18,
+      47.82,
+      626.71,
+      338.95
+     ]
+    },
+    {
+     "class": "red_box",
+     "xyxy": [
+      117.8,
+      65.4,
+      327.7,
+      215.69
+     ]
+    },
+    {
+     "class": "yellow_box",
+     "xyxy": [
+      150.08,
+      257.08,
+      311.58,
+      356.71
+     ]
+    },
+    {
+     "class": "start_button",
+     "xyxy": [
+      445.41,
+      349.91,
+      567.28,
+      434.72
+     ]
+    }
+   ]
+  },
+  "x026_345.jpg": {
+   "excluded": false,
+   "verified": true,
+   "boxes": [
+    {
+     "class": "outer_box",
+     "xyxy": [
+      99.94,
+      21.3,
+      333.79,
+      450.77
+     ]
+    },
+    {
+     "class": "tray",
+     "xyxy": [
+      416.18,
+      47.82,
+      626.71,
+      338.95
+     ]
+    },
+    {
+     "class": "red_box",
+     "xyxy": [
+      143.27,
+      108.53,
+      308.14,
+      226.35
+     ]
+    },
+    {
+     "class": "yellow_box",
+     "xyxy": [
+      150.52,
+      257.7,
+      232.24,
+      354.55
+     ]
+    },
+    {
+     "class": "start_button",
+     "xyxy": [
+      445.41,
+      349.91,
+      567.28,
+      434.72
+     ]
+    }
+   ]
+  },
+  "x026_360.jpg": {
+   "excluded": true,
+   "verified": false,
+   "boxes": []
+  },
+  "x026_405.jpg": {
+   "excluded": false,
+   "verified": true,
+   "boxes": [
+    {
+     "class": "outer_box",
+     "xyxy": [
+      99.94,
+      21.3,
+      333.79,
+      450.77
+     ]
+    },
+    {
+     "class": "tray",
+     "xyxy": [
+      416.18,
+      47.82,
+      626.71,
+      338.95
+     ]
+    },
+    {
+     "class": "red_box",
+     "xyxy": [
+      142.26,
+      106.22,
+      307.24,
+      227.43
+     ]
+    },
+    {
+     "class": "yellow_box",
+     "xyxy": [
+      476.89,
+      152.65,
+      577.67,
+      257.65
+     ]
+    },
+    {
+     "class": "start_button",
+     "xyxy": [
+      445.41,
+      349.91,
+      567.28,
+      434.72
+     ]
+    }
+   ]
+  },
+  "x026_435.jpg": {
+   "excluded": false,
+   "verified": true,
+   "boxes": [
+    {
+     "class": "outer_box",
+     "xyxy": [
+      99.94,
+      21.3,
+      333.79,
+      450.77
+     ]
+    },
+    {
+     "class": "tray",
+     "xyxy": [
+      416.18,
+      47.82,
+      626.71,
+      338.95
+     ]
+    },
+    {
+     "class": "red_box",
+     "xyxy": [
+      143.94,
+      106.32,
+      309.02,
+      227.57
+     ]
+    },
+    {
+     "class": "yellow_box",
+     "xyxy": [
+      478.11,
+      154.08,
+      601.95,
+      260.19
+     ]
+    },
+    {
+     "class": "start_button",
+     "xyxy": [
+      445.41,
+      349.91,
+      567.28,
+      434.72
+     ]
+    }
+   ]
+  },
+  "x026_465.jpg": {
+   "excluded": false,
+   "verified": true,
+   "boxes": [
+    {
+     "class": "outer_box",
+     "xyxy": [
+      99.94,
+      21.3,
+      333.79,
+      450.77
+     ]
+    },
+    {
+     "class": "tray",
+     "xyxy": [
+      416.18,
+      47.82,
+      626.71,
+      338.95
+     ]
+    },
+    {
+     "class": "red_box",
+     "xyxy": [
+      143.02,
+      109.5,
+      311.99,
+      229.04
+     ]
+    },
+    {
+     "class": "yellow_box",
+     "xyxy": [
+      241.66,
+      191.64,
+      355.88,
+      324.77
+     ]
+    },
+    {
+     "class": "start_button",
+     "xyxy": [
+      445.41,
+      349.91,
+      567.28,
+      434.72
+     ]
+    }
+   ]
+  },
+  "x026_510.jpg": {
+   "excluded": true,
+   "verified": false,
+   "boxes": []
+  },
+  "x026_60.jpg": {
+   "excluded": true,
+   "verified": false,
+   "boxes": []
+  },
+  "x027_105.jpg": {
+   "excluded": false,
+   "verified": true,
+   "boxes": [
+    {
+     "class": "outer_box",
+     "xyxy": [
+      102.24,
+      21.11,
+      333.4,
+      451.24
+     ]
+    },
+    {
+     "class": "tray",
+     "xyxy": [
+      415.79,
+      47.22,
+      626.94,
+      338.29
+     ]
+    },
+    {
+     "class": "red_box",
+     "xyxy": [
+      319.63,
+      142.44,
+      508.39,
+      313.89
+     ]
+    },
+    {
+     "class": "yellow_box",
+     "xyxy": [
+      145.84,
+      100.9,
+      309.9,
+      203.55
+     ]
+    },
+    {
+     "class": "start_button",
+     "xyxy": [
+      440.3,
+      346.56,
+      568.67,
+      439.4
+     ]
+    }
+   ]
+  },
+  "x027_210.jpg": {
+   "excluded": false,
+   "verified": true,
+   "boxes": [
+    {
+     "class": "outer_box",
+     "xyxy": [
+      102.24,
+      21.11,
+      333.4,
+      451.24
+     ]
+    },
+    {
+     "class": "tray",
+     "xyxy": [
+      415.79,
+      47.22,
+      626.94,
+      338.29
+     ]
+    },
+    {
+     "class": "red_box",
+     "xyxy": [
+      442.25,
+      177.15,
+      619.06,
+      345.41
+     ]
+    },
+    {
+     "class": "yellow_box",
+     "xyxy": [
+      145.58,
+      100.72,
+      310.05,
+      203.85
+     ]
+    },
+    {
+     "class": "start_button",
+     "xyxy": [
+      440.3,
+      346.56,
+      568.67,
+      439.4
+     ]
+    }
+   ]
+  },
+  "x027_240.jpg": {
+   "excluded": false,
+   "verified": true,
+   "boxes": [
+    {
+     "class": "outer_box",
+     "xyxy": [
+      102.24,
+      21.11,
+      333.4,
+      451.24
+     ]
+    },
+    {
+     "class": "tray",
+     "xyxy": [
+      415.79,
+      47.22,
+      626.94,
+      338.29
+     ]
+    },
+    {
+     "class": "red_box",
+     "xyxy": [
+      442.22,
+      177.15,
+      619.39,
+      345.57
+     ]
+    },
+    {
+     "class": "yellow_box",
+     "xyxy": [
+      145.58,
+      100.67,
+      310.01,
+      203.77
+     ]
+    },
+    {
+     "class": "start_button",
+     "xyxy": [
+      440.3,
+      346.56,
+      568.67,
+      439.4
+     ]
+    }
+   ]
+  },
+  "x027_270.jpg": {
+   "excluded": false,
+   "verified": true,
+   "boxes": [
+    {
+     "class": "outer_box",
+     "xyxy": [
+      102.24,
+      21.11,
+      333.4,
+      451.24
+     ]
+    },
+    {
+     "class": "tray",
+     "xyxy": [
+      415.79,
+      47.22,
+      626.94,
+      338.29
+     ]
+    },
+    {
+     "class": "red_box",
+     "xyxy": [
+      442.25,
+      177.14,
+      619.38,
+      345.82
+     ]
+    },
+    {
+     "class": "yellow_box",
+     "xyxy": [
+      145.6,
+      100.74,
+      310.08,
+      203.74
+     ]
+    },
+    {
+     "class": "start_button",
+     "xyxy": [
+      440.3,
+      346.56,
+      568.67,
+      439.4
+     ]
+    }
+   ]
+  },
+  "x027_300.jpg": {
+   "excluded": false,
+   "verified": true,
+   "boxes": [
+    {
+     "class": "outer_box",
+     "xyxy": [
+      102.24,
+      21.11,
+      333.4,
+      451.24
+     ]
+    },
+    {
+     "class": "tray",
+     "xyxy": [
+      415.79,
+      47.22,
+      626.94,
+      338.29
+     ]
+    },
+    {
+     "class": "red_box",
+     "xyxy": [
+      442.37,
+      178.07,
+      618.9,
+      346.31
+     ]
+    },
+    {
+     "class": "yellow_box",
+     "xyxy": [
+      145.72,
+      100.93,
+      309.41,
+      203.68
+     ]
+    },
+    {
+     "class": "start_button",
+     "xyxy": [
+      440.3,
+      346.56,
+      568.67,
+      439.4
+     ]
+    }
+   ]
+  },
+  "x027_405.jpg": {
+   "excluded": true,
+   "verified": false,
+   "boxes": []
+  },
+  "x027_435.jpg": {
+   "excluded": false,
+   "verified": true,
+   "boxes": [
+    {
+     "class": "outer_box",
+     "xyxy": [
+      102.24,
+      21.11,
+      333.4,
+      451.24
+     ]
+    },
+    {
+     "class": "tray",
+     "xyxy": [
+      415.79,
+      47.22,
+      626.94,
+      338.29
+     ]
+    },
+    {
+     "class": "red_box",
+     "xyxy": [
+      26.87,
+      168.61,
+      272.37,
+      339.43
+     ]
+    },
+    {
+     "class": "yellow_box",
+     "xyxy": [
+      144.99,
+      101.1,
+      308.89,
+      198.6
+     ]
+    },
+    {
+     "class": "start_button",
+     "xyxy": [
+      440.3,
+      346.56,
+      568.67,
+      439.4
+     ]
+    }
+   ]
+  },
+  "x027_450.jpg": {
+   "excluded": false,
+   "verified": true,
+   "boxes": [
+    {
+     "class": "outer_box",
+     "xyxy": [
+      102.24,
+      21.11,
+      333.4,
+      451.24
+     ]
+    },
+    {
+     "class": "tray",
+     "xyxy": [
+      415.79,
+      47.22,
+      626.94,
+      338.29
+     ]
+    },
+    {
+     "class": "red_box",
+     "xyxy": [
+      1.09,
+      166.16,
+      247.77,
+      353.92
+     ]
+    },
+    {
+     "class": "yellow_box",
+     "xyxy": [
+      145.1,
+      101.21,
+      309.45,
+      200.64
+     ]
+    },
+    {
+     "class": "start_button",
+     "xyxy": [
+      440.3,
+      346.56,
+      568.67,
+      439.4
+     ]
+    }
+   ]
+  },
+  "x027_510.jpg": {
+   "excluded": true,
+   "verified": false,
+   "boxes": []
+  },
+  "x027_540.jpg": {
+   "excluded": true,
+   "verified": false,
+   "boxes": []
+  },
+  "x027_90.jpg": {
+   "excluded": false,
+   "verified": true,
+   "boxes": [
+    {
+     "class": "outer_box",
+     "xyxy": [
+      102.24,
+      21.11,
+      333.4,
+      451.24
+     ]
+    },
+    {
+     "class": "tray",
+     "xyxy": [
+      415.79,
+      47.22,
+      626.94,
+      338.29
+     ]
+    },
+    {
+     "class": "red_box",
+     "xyxy": [
+      115.72,
+      199.78,
+      322.67,
+      349.93
+     ]
+    },
+    {
+     "class": "yellow_box",
+     "xyxy": [
+      145.8,
+      101,
+      309.42,
+      203.05
+     ]
+    },
+    {
+     "class": "start_button",
+     "xyxy": [
+      440.3,
+      346.56,
+      568.67,
+      439.4
+     ]
+    }
+   ]
+  },
+  "x030_120.jpg": {
+   "excluded": true,
+   "verified": false,
+   "boxes": []
+  },
+  "x030_240.jpg": {
+   "excluded": false,
+   "verified": true,
+   "boxes": [
+    {
+     "class": "outer_box",
+     "xyxy": [
+      100.29,
+      21.31,
+      332.99,
+      449.79
+     ]
+    },
+    {
+     "class": "tray",
+     "xyxy": [
+      416.25,
+      47.89,
+      626.79,
+      337.88
+     ]
+    },
+    {
+     "class": "red_box",
+     "xyxy": [
+      105.79,
+      66.3,
+      279.24,
+      230.6
+     ]
+    },
+    {
+     "class": "yellow_box",
+     "xyxy": [
+      451.64,
+      226.81,
+      622.27,
+      340.68
+     ]
+    },
+    {
+     "class": "start_button",
+     "xyxy": [
+      445.57,
+      349.32,
+      566.85,
+      433.65
+     ]
+    }
+   ]
+  },
+  "x030_30.jpg": {
+   "excluded": false,
+   "verified": true,
+   "boxes": [
+    {
+     "class": "outer_box",
+     "xyxy": [
+      100.29,
+      21.31,
+      332.99,
+      449.79
+     ]
+    },
+    {
+     "class": "tray",
+     "xyxy": [
+      416.25,
+      47.89,
+      626.79,
+      337.88
+     ]
+    },
+    {
+     "class": "red_box",
+     "xyxy": [
+      204.66,
+      106.13,
+      304.94,
+      208.84
+     ]
+    },
+    {
+     "class": "yellow_box",
+     "xyxy": [
+      140.63,
+      268.06,
+      272.48,
+      363.75
+     ]
+    },
+    {
+     "class": "start_button",
+     "xyxy": [
+      445.57,
+      349.32,
+      566.85,
+      433.65
+     ]
+    }
+   ]
+  },
+  "x030_480.jpg": {
+   "excluded": true,
+   "verified": false,
+   "boxes": []
+  },
+  "x030_510.jpg": {
+   "excluded": true,
+   "verified": false,
+   "boxes": []
+  },
+  "x030_525.jpg": {
+   "excluded": false,
+   "verified": true,
+   "boxes": [
+    {
+     "class": "outer_box",
+     "xyxy": [
+      100.29,
+      21.31,
+      332.99,
+      449.79
+     ]
+    },
+    {
+     "class": "tray",
+     "xyxy": [
+      416.25,
+      47.89,
+      626.79,
+      337.88
+     ]
+    },
+    {
+     "class": "red_box",
+     "xyxy": [
+      82.82,
+      20.82,
+      315.66,
+      186.35
+     ]
+    },
+    {
+     "class": "yellow_box",
+     "xyxy": [
+      453.97,
+      226.95,
+      621.67,
+      341.69
+     ]
+    },
+    {
+     "class": "start_button",
+     "xyxy": [
+      445.57,
+      349.32,
+      566.85,
+      433.65
+     ]
+    }
+   ]
+  },
+  "x031_405.jpg": {
+   "excluded": false,
+   "verified": true,
+   "boxes": [
+    {
+     "class": "outer_box",
+     "xyxy": [
+      101.36,
+      21.17,
+      334.25,
+      449.58
+     ]
+    },
+    {
+     "class": "tray",
+     "xyxy": [
+      415.79,
+      47.03,
+      627.29,
+      338.92
+     ]
+    },
+    {
+     "class": "red_box",
+     "xyxy": [
+      115.04,
+      80.71,
+      310.39,
+      225.62
+     ]
+    },
+    {
+     "class": "yellow_box",
+     "xyxy": [
+      455.93,
+      93.83,
+      622.07,
+      196.26
+     ]
+    },
+    {
+     "class": "start_button",
+     "xyxy": [
+      443.03,
+      347.76,
+      567.81,
+      434.04
+     ]
+    }
+   ]
+  },
+  "x031_60.jpg": {
+   "excluded": true,
+   "verified": false,
+   "boxes": []
+  },
+  "x033_30.jpg": {
+   "excluded": true,
+   "verified": false,
+   "boxes": []
+  },
+  "x034_15.jpg": {
+   "excluded": false,
+   "verified": true,
+   "boxes": [
+    {
+     "class": "outer_box",
+     "xyxy": [
+      145.22,
+      12.54,
+      388.02,
+      447.16
+     ]
+    },
+    {
+     "class": "tray",
+     "xyxy": [
+      453.97,
+      37.42,
+      657.72,
+      324.36
+     ]
+    },
+    {
+     "class": "red_box",
+     "xyxy": [
+      201.85,
+      101.57,
+      368.43,
+      230.42
+     ]
+    },
+    {
+     "class": "yellow_box",
+     "xyxy": [
+      191.56,
+      276.33,
+      311,
+      377.09
+     ]
+    },
+    {
+     "class": "start_button",
+     "xyxy": [
+      476.85,
+      341.71,
+      596.87,
+      424.43
+     ]
+    }
+   ]
+  },
+  "x034_150.jpg": {
+   "excluded": false,
+   "verified": true,
+   "boxes": [
+    {
+     "class": "outer_box",
+     "xyxy": [
+      145.22,
+      12.54,
+      388.02,
+      447.16
+     ]
+    },
+    {
+     "class": "tray",
+     "xyxy": [
+      453.97,
+      37.42,
+      657.72,
+      324.36
+     ]
+    },
+    {
+     "class": "red_box",
+     "xyxy": [
+      201.78,
+      100.53,
+      369.5,
+      229.59
+     ]
+    },
+    {
+     "class": "yellow_box",
+     "xyxy": [
+      365.24,
+      186.49,
+      589.6,
+      332
+     ]
+    },
+    {
+     "class": "start_button",
+     "xyxy": [
+      476.85,
+      341.71,
+      596.87,
+      424.43
+     ]
+    }
+   ]
+  },
+  "x034_210.jpg": {
+   "excluded": true,
+   "verified": false,
+   "boxes": []
+  },
+  "x034_75.jpg": {
+   "excluded": false,
+   "verified": true,
+   "boxes": [
+    {
+     "class": "outer_box",
+     "xyxy": [
+      145.22,
+      12.54,
+      388.02,
+      447.16
+     ]
+    },
+    {
+     "class": "tray",
+     "xyxy": [
+      453.97,
+      37.42,
+      657.72,
+      324.36
+     ]
+    },
+    {
+     "class": "red_box",
+     "xyxy": [
+      203.77,
+      93.68,
+      368.31,
+      229.68
+     ]
+    },
+    {
+     "class": "yellow_box",
+     "xyxy": [
+      227.94,
+      204.69,
+      428.77,
+      338.2
+     ]
+    },
+    {
+     "class": "start_button",
+     "xyxy": [
+      476.85,
+      341.71,
+      596.87,
+      424.43
+     ]
+    }
+   ]
+  },
+  "x037_120.jpg": {
+   "excluded": false,
+   "verified": true,
+   "boxes": [
+    {
+     "class": "outer_box",
+     "xyxy": [
+      144.79,
+      11,
+      394.78,
+      448.25
+     ]
+    },
+    {
+     "class": "tray",
+     "xyxy": [
+      453.38,
+      37.13,
+      658.06,
+      324.3
+     ]
+    },
+    {
+     "class": "red_box",
+     "xyxy": [
+      197.35,
+      106.62,
+      353.33,
+      173.99
+     ]
+    },
+    {
+     "class": "yellow_box",
+     "xyxy": [
+      100.06,
+      165.8,
+      348.91,
+      323.57
+     ]
+    },
+    {
+     "class": "start_button",
+     "xyxy": [
+      475.19,
+      341.2,
+      597.9,
+      425.52
+     ]
+    }
+   ]
+  },
+  "x037_15.jpg": {
+   "excluded": true,
+   "verified": false,
+   "boxes": []
+  },
+  "x037_150.jpg": {
+   "excluded": false,
+   "verified": true,
+   "boxes": [
+    {
+     "class": "outer_box",
+     "xyxy": [
+      144.79,
+      11,
+      394.78,
+      448.25
+     ]
+    },
+    {
+     "class": "tray",
+     "xyxy": [
+      453.38,
+      37.13,
+      658.06,
+      324.3
+     ]
+    },
+    {
+     "class": "red_box",
+     "xyxy": [
+      197.48,
+      106.77,
+      354.56,
+      177.92
+     ]
+    },
+    {
+     "class": "yellow_box",
+     "xyxy": [
+      105.13,
+      169.4,
+      337.89,
+      323.02
+     ]
+    },
+    {
+     "class": "start_button",
+     "xyxy": [
+      475.19,
+      341.2,
+      597.9,
+      425.52
+     ]
+    }
+   ]
+  },
+  "x037_60.jpg": {
+   "excluded": false,
+   "verified": true,
+   "boxes": [
+    {
+     "class": "outer_box",
+     "xyxy": [
+      144.79,
+      11,
+      394.78,
+      448.25
+     ]
+    },
+    {
+     "class": "tray",
+     "xyxy": [
+      453.38,
+      37.13,
+      658.06,
+      324.3
+     ]
+    },
+    {
+     "class": "red_box",
+     "xyxy": [
+      196.93,
+      106.52,
+      354.85,
+      192.81
+     ]
+    },
+    {
+     "class": "yellow_box",
+     "xyxy": [
+      111.28,
+      166.52,
+      340.2,
+      351.04
+     ]
+    },
+    {
+     "class": "start_button",
+     "xyxy": [
+      475.19,
+      341.2,
+      597.9,
+      425.52
+     ]
+    }
+   ]
+  },
+  "x037_90.jpg": {
+   "excluded": false,
+   "verified": true,
+   "boxes": [
+    {
+     "class": "outer_box",
+     "xyxy": [
+      144.79,
+      11,
+      394.78,
+      448.25
+     ]
+    },
+    {
+     "class": "tray",
+     "xyxy": [
+      453.38,
+      37.13,
+      658.06,
+      324.3
+     ]
+    },
+    {
+     "class": "red_box",
+     "xyxy": [
+      197.3,
+      106.72,
+      353.63,
+      176.51
+     ]
+    },
+    {
+     "class": "yellow_box",
+     "xyxy": [
+      98.34,
+      168.39,
+      352.13,
+      328.14
+     ]
+    },
+    {
+     "class": "start_button",
+     "xyxy": [
+      475.19,
+      341.2,
+      597.9,
+      425.52
+     ]
+    }
+   ]
+  },
+  "x039_75.jpg": {
+   "excluded": false,
+   "verified": true,
+   "boxes": [
+    {
+     "class": "outer_box",
+     "xyxy": [
+      144.71,
+      11.75,
+      395.14,
+      450.48
+     ]
+    },
+    {
+     "class": "tray",
+     "xyxy": [
+      453.48,
+      37.57,
+      657.88,
+      324.24
+     ]
+    },
+    {
+     "class": "red_box",
+     "xyxy": [
+      437.8,
+      42.45,
+      629.79,
+      201.44
+     ]
+    },
+    {
+     "class": "yellow_box",
+     "xyxy": [
+      191.98,
+      255.21,
+      355.32,
+      353.11
+     ]
+    },
+    {
+     "class": "start_button",
+     "xyxy": [
+      475.14,
+      341.26,
+      597.9,
+      425.9
+     ]
+    }
+   ]
+  },
+  "x043_15.jpg": {
+   "excluded": true,
+   "verified": false,
+   "boxes": []
+  },
+  "x044_15.jpg": {
+   "excluded": true,
+   "verified": false,
+   "boxes": []
+  },
+  "x044_165.jpg": {
+   "excluded": false,
+   "verified": true,
+   "boxes": [
+    {
+     "class": "outer_box",
+     "xyxy": [
+      144.84,
+      10.99,
+      396.6,
+      450.42
+     ]
+    },
+    {
+     "class": "tray",
+     "xyxy": [
+      453.53,
+      36.91,
+      658.43,
+      325.67
+     ]
+    },
+    {
+     "class": "red_box",
+     "xyxy": [
+      474.94,
+      74.63,
+      640.49,
+      215.32
+     ]
+    },
+    {
+     "class": "yellow_box",
+     "xyxy": [
+      310.2,
+      112.43,
+      463.57,
+      306.08
+     ]
+    },
+    {
+     "class": "start_button",
+     "xyxy": [
+      475.06,
+      341.43,
+      598.22,
+      426.01
+     ]
+    }
+   ]
+  },
+  "x012_570.jpg": {
+   "excluded": true,
+   "verified": false,
+   "boxes": []
+  }
+ }
+}

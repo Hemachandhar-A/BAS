@@ -129,9 +129,7 @@ def test_select_container_picks_highest_in_band_remaining_candidate():
         _det(0.4, (0, 0, 10, 10)),
         _det(0.9, (20, 20, 30, 30)),
     ]
-    result = select_container(
-        dets, area_band=(0.0, 1.0), width=100, height=100, exclude_boxes={}
-    )
+    result = select_container(dets, area_band=(0.0, 1.0), width=100, height=100, exclude_boxes={})
     assert isinstance(result, ContainerSelection)
     assert result.chosen is dets[1]
     assert (dets[0], "not_highest_score") in result.rejected

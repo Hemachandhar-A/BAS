@@ -1,0 +1,8 @@
+# Acceptance thresholds (IMPLEMENTATION_PLAN.md 5.8). Starting judgment calls, not
+# evidence-derived. Written 2026-10-03, BEFORE any evaluation on the test split (the
+# test split has not been evaluated at all). Amended at most once, at P2.6, with
+# both people's ack in ISSUES.md. A relaxation is never silent.
+detector:   { min_recall_per_class: 0.85, min_map50: 0.80 }   # on hand-verified (gold) test frames, at detector_conf_floor
+pipeline:   { min_pipeline_fps: 8 }                            # end-to-end on the demo laptop
+replay:     { exact_deviation_match: true, max_mismatched_runs: 0 }
+label_review: { max_bad_fraction_per_class: 0.10 }

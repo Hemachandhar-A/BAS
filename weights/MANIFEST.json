@@ -1,4 +1,60 @@
 {
+  "active_detector": "yolo11n",
+  "detectors": [
+    {
+      "name": "yolo11n",
+      "file": "detector_yolo11n.pt",
+      "sha256": "cb9cd840618525058823e4242e8ced9539118dc2f134456785667289e1ab1613",
+      "size_bytes": 5438490,
+      "license": "AGPL-3.0",
+      "classes": [
+        "outer_box",
+        "tray",
+        "red_box",
+        "yellow_box",
+        "start_button"
+      ],
+      "input_size": 384,
+      "detector_conf_floor": 0.3,
+      "dataset_stamp_trained": "622c277b5d0e5e06",
+      "dataset_stamp_evaluated": "1bea0958699991df",
+      "trained_at": null,
+      "selection_decision": "2026-10-03 P1.5 DECISION - detector choice: YOLO11n (default), RF-DETR-Nano alternative",
+      "training_summary": "data/kaggle_upload/full_output/outputs/yolo11n/train_summary.json (git-ignored)",
+      "training_summary_sha256": "1a5274203f336a22618f72efc37fac81d41bf549e0cf8a227b63352ef9b548df",
+      "valid_report": "reports/detector_eval_valid_yolo11n.json",
+      "test_report": "reports/detector_eval_test_yolo11n.json",
+      "validated_for_pipeline": true,
+      "test_evaluated": true,
+      "note": "default detector; AGPL-3.0, see the DECISION entry; ultralytics must stay in its own optional dependency group"
+    },
+    {
+      "name": "rfdetr_nano",
+      "file": "detector_rfdetr_nano.pth",
+      "sha256": "82d9f126cb1d36d08713e6a490629aeeba37fd447db9cebf7381f5e64de804bb",
+      "size_bytes": 120960429,
+      "license": "Apache-2.0",
+      "classes": [
+        "outer_box",
+        "tray",
+        "red_box",
+        "yellow_box",
+        "start_button"
+      ],
+      "input_size": 384,
+      "detector_conf_floor": 0.3,
+      "dataset_stamp_trained": "622c277b5d0e5e06",
+      "dataset_stamp_evaluated": "1bea0958699991df",
+      "trained_at": null,
+      "selection_decision": "2026-10-03 P1.5 DECISION - detector choice: YOLO11n (default), RF-DETR-Nano alternative",
+      "training_summary": "data/kaggle_upload/full_output/outputs/rfdetr/train_summary.json (git-ignored)",
+      "training_summary_sha256": "723a2dda3f2e4315e95658a2c24b1e6c2e1f4fd10ae74fa08d7d120278a80ae8",
+      "valid_report": "reports/detector_eval_valid_rfdetr.json",
+      "validated_for_pipeline": false,
+      "test_evaluated": false,
+      "note": "tune and replay when time permits"
+    }
+  ],
   "hand": {
     "file": "hand_landmarker.task",
     "sha256": "fbc2a30080c3c557093b5ddfc334698132eb341044ccee322ccf8bcf3607cde1",

@@ -1,5 +1,197 @@
 {
  "version": 1,
+ "generated_at": "2026-10-03T20:41:04",
+ "classes": [
+  "outer_box",
+  "tray",
+  "red_box",
+  "yellow_box",
+  "start_button"
+ ],
+ "dataset_stamp": "1bea0958699991df",
+ "overlay_files": {
+  "train": "5474f7695e1cf07f",
+  "val": "a5a0a974569f359e",
+  "test": "62813cad8836590f"
+ },
+ "splits": {
+  "train": {
+   "frames_sampled": 624,
+   "images": 593,
+   "annotations": 2965,
+   "images_per_run": {
+    "x001": 28,
+    "x003": 24,
+    "x004": 26,
+    "x005": 21,
+    "x006": 22,
+    "x007": 28,
+    "x008": 31,
+    "x010": 25,
+    "x011": 26,
+    "x012": 30,
+    "x018": 29,
+    "x019": 24,
+    "x020": 28,
+    "x021": 31,
+    "x023": 4,
+    "x026": 26,
+    "x027": 27,
+    "x029": 18,
+    "x030": 25,
+    "x031": 24,
+    "x033": 18,
+    "x034": 17,
+    "x037": 13,
+    "x039": 15,
+    "x043": 20,
+    "x044": 13
+   },
+   "annotations_per_class": {
+    "outer_box": 593,
+    "tray": 593,
+    "red_box": 593,
+    "yellow_box": 593,
+    "start_button": 593
+   },
+   "annotations_per_run": {
+    "x001": 140,
+    "x003": 120,
+    "x004": 130,
+    "x005": 105,
+    "x006": 110,
+    "x007": 140,
+    "x008": 155,
+    "x010": 125,
+    "x011": 130,
+    "x012": 150,
+    "x018": 145,
+    "x019": 120,
+    "x020": 140,
+    "x021": 155,
+    "x023": 20,
+    "x026": 130,
+    "x027": 135,
+    "x029": 90,
+    "x030": 125,
+    "x031": 120,
+    "x033": 90,
+    "x034": 85,
+    "x037": 65,
+    "x039": 75,
+    "x043": 100,
+    "x044": 65
+   },
+   "frames_corrected": 85,
+   "frames_verified": 85,
+   "frames_excluded_overlay": 31,
+   "frames_static_overridden": 0,
+   "frames_excluded_auto": 0,
+   "frames_labeler_excluded": 115,
+   "frames_recovered": 85,
+   "hand_over_container": {
+    "kept_frames": 593,
+    "with_hand_over_container": 370,
+    "no_hand_data": 0
+   }
+  },
+  "valid": {
+   "frames_sampled": 220,
+   "images": 211,
+   "annotations": 1055,
+   "images_per_run": {
+    "x015": 24,
+    "x016": 29,
+    "x017": 25,
+    "x022": 25,
+    "x024": 13,
+    "x025": 22,
+    "x028": 25,
+    "x032": 18,
+    "x036": 21,
+    "x040": 9
+   },
+   "annotations_per_class": {
+    "outer_box": 211,
+    "tray": 211,
+    "red_box": 211,
+    "yellow_box": 211,
+    "start_button": 211
+   },
+   "annotations_per_run": {
+    "x015": 120,
+    "x016": 145,
+    "x017": 125,
+    "x022": 125,
+    "x024": 65,
+    "x025": 110,
+    "x028": 125,
+    "x032": 90,
+    "x036": 105,
+    "x040": 45
+   },
+   "frames_corrected": 88,
+   "frames_verified": 88,
+   "frames_excluded_overlay": 9,
+   "frames_static_overridden": 0,
+   "frames_excluded_auto": 0,
+   "frames_labeler_excluded": 47,
+   "frames_recovered": 38,
+   "hand_over_container": {
+    "kept_frames": 211,
+    "with_hand_over_container": 134,
+    "no_hand_data": 0
+   }
+  },
+  "test": {
+   "frames_sampled": 225,
+   "images": 213,
+   "annotations": 1065,
+   "images_per_run": {
+    "x002": 25,
+    "x009": 27,
+    "x013": 24,
+    "x014": 34,
+    "x035": 15,
+    "x038": 21,
+    "x041": 17,
+    "x042": 13,
+    "x045": 16,
+    "x046": 21
+   },
+   "annotations_per_class": {
+    "outer_box": 213,
+    "tray": 213,
+    "red_box": 213,
+    "yellow_box": 213,
+    "start_button": 213
+   },
+   "annotations_per_run": {
+    "x002": 125,
+    "x009": 135,
+    "x013": 120,
+    "x014": 170,
+    "x035": 75,
+    "x038": 105,
+    "x041": 85,
+    "x042": 65,
+    "x045": 80,
+    "x046": 105
+   },
+   "frames_corrected": 80,
+   "frames_verified": 80,
+   "frames_excluded_overlay": 12,
+   "frames_static_overridden": 0,
+   "frames_excluded_auto": 0,
+   "frames_labeler_excluded": 38,
+   "frames_recovered": 27,
+   "hand_over_container": {
+    "kept_frames": 213,
+    "with_hand_over_container": 130,
+    "no_hand_data": 0
+   }
+  }
+ },
  "label_review": {
   "gate_max_bad_fraction": 0.1,
   "stratified": {
@@ -161,6 +353,56 @@
    "rows": 138,
    "bad_rows": 0
   },
-  "generated_at": "2026-10-03T02:26:34"
+  "fresh_after_repair": {
+   "status": "recorded",
+   "recorded_at": "2026-10-03T14:01:58",
+   "source": "data/review/fresh_review.csv",
+   "csv_sha256": "e1697919011210bdfa4441d4cde5b2fbf90858194f6fa188e6c1aa743a75901b",
+   "sample_seed": 20261003,
+   "gate_max_bad_fraction": 0.1,
+   "n_frames": 60,
+   "per_class": {
+    "outer_box": {
+     "bad": 0,
+     "bad_fraction": 0.0,
+     "hidden_missing": 0,
+     "passes": true
+    },
+    "tray": {
+     "bad": 0,
+     "bad_fraction": 0.0,
+     "hidden_missing": 0,
+     "passes": true
+    },
+    "red_box": {
+     "bad": 0,
+     "bad_fraction": 0.0,
+     "hidden_missing": 0,
+     "passes": true
+    },
+    "yellow_box": {
+     "bad": 1,
+     "bad_fraction": 0.016666666666666666,
+     "hidden_missing": 0,
+     "passes": true
+    },
+    "start_button": {
+     "bad": 0,
+     "bad_fraction": 0.0,
+     "hidden_missing": 0,
+     "passes": true
+    }
+   },
+   "gate_passes": true,
+   "bad_cells": [
+    {
+     "frame": "x012_570.jpg",
+     "class": "yellow_box",
+     "reason": "wrong_class",
+     "visibility": ""
+    }
+   ],
+   "bad_frames_not_excluded": []
+  }
  }
 }
