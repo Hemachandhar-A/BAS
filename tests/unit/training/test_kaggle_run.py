@@ -110,25 +110,21 @@ def test_inject_package_fills_the_block_and_the_result_still_compiles():
 def test_the_template_has_no_credential_and_imports_only_the_standard_library_at_top():
     src = Path(R.__file__).read_text(encoding="utf-8")
     assert "kaggle.json" not in src and "KAGGLE_KEY" not in src
-    top = [ln for ln in src.splitlines() if ln.startswith(("import ", "from "))]
-    assert all(
-        ln.split()[1].split(".")[0]
+    import ast
+
+    top = [
+        n.names[0].name if isinstance(n, ast.Import) else n.module
+        for n in ast.parse(src).body
+        if isinstance(n, (ast.Import, ast.ImportFrom))
+    ]  # module-level imports only: the probe's source is a string, run in a child process
+    assert top and all(
+        name.split(".")[0]
         in {
-            "__future__",
-            "hashlib",
-            "json",
-            "os",
-            "re",
-            "shutil",
-            "subprocess",
-            "sys",
-            "threading",
-            "time",
-            "zipfile",
-            "pathlib",
+            "__future__", "hashlib", "json", "os", "re", "shutil", "subprocess", "sys",
+            "threading", "time", "zipfile", "pathlib",
         }
-        for ln in top
-    )
+        for name in top
+    )  # fmt: skip
 
 
 # --- unpacking and verification ------------------------------------------------------------

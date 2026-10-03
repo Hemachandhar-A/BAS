@@ -369,11 +369,10 @@ def test_the_constraints_freeze_the_whole_core_stack_when_installed():
     installed = {n: "1.0" for n in R.FROZEN}
     lines = R.constraints_text(installed).splitlines()
     assert lines == [f"{n}==1.0" for n in R.FROZEN]
-    for n in (
-        "torch torchvision torchaudio numpy opencv-python pillow scipy pydantic transformers "
-        "peft pycocotools pytorch-lightning torchmetrics"
-    ).split():
+    for n in "torch torchvision torchaudio numpy opencv-python pillow scipy".split():
         assert n in R.FROZEN
+    for n in "pydantic transformers peft pycocotools pytorch-lightning torchmetrics".split():
+        assert n not in R.FROZEN  # pure-Python libraries are left to pip (S-F1d)
     assert R.constraints_text({}) == "\n"  # nothing installed: an empty file, no crash
 
 

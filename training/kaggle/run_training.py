@@ -3,16 +3,22 @@
 One constant selects what runs. Change only the line ``MODE = ...`` below (the packer does it
 with ``python -m training.kaggle_pack --set-mode FULL``):
 
-  SMOKE  prints the machine, unpacks and verifies the data, installs the pinned packages,
-         times both models on the GPU (``gpu_preflight --require-cuda``), runs
-         ``finetune --dry-run`` on a tiny synthetic dataset, writes ``smoke_report.json`` and
-         stops. Meant to take well under 10 minutes after the pip install.
+  SMOKE  prints the machine, unpacks and verifies the data, installs the pinned packages
+         (dataset verification and the pip step are hard stops), then runs five stages, each in
+         its own guard with a 5-minute timeout, and CONTINUES after a failure: gpu_preflight
+         for both models, ``finetune --dry-run`` for both on a tiny synthetic dataset, and a
+         3-iteration real RF-DETR training probe on the real dataset. Prints a stage table,
+         writes ``smoke_report.json`` and ends with SMOKE OK or SMOKE PARTIAL.
   FULL   trains RF-DETR-Nano and then YOLO11n (seed 0, epochs and learning rate by the S-E
          rule inside ``training.finetune``), each with ``train_summary.json``, the best
          weights, a log and sha256s, all under ``/kaggle/working/outputs``. Resumable: a
          ``--resume`` is passed when a checkpoint is already there (or in an attached earlier
          run's output). A total-time guard stops cleanly before the session limit and writes
          ``run_status.json`` saying what finished.
+
+Datasets and code are staged under a temp folder (/kaggle/temp, else /tmp/work), never under
+/kaggle/working: that folder is the kernel OUTPUT and keeps only ``outputs/`` (checked at the
+end: more than 2 GB fails the run).
 
 This file is stdlib-only at import time so its pure helpers are unit-tested on a laptop
 (tests/unit/training/test_kaggle_run.py); torch and the project code are imported inside
@@ -41,8 +47,14 @@ PACKAGE: dict | None = None
 
 SEED = 0
 INPUT = Path("/kaggle/input")
-WORK = Path("/kaggle/working")
+WORK = Path("/kaggle/working")  # the kernel OUTPUT: only outputs/ lives here
 OUT = WORK / "outputs"
+TEMP_CANDIDATES = (Path("/kaggle/temp"), Path("/tmp/work"))  # datasets and code are staged here
+TEMP_NEED_BYTES = 4 * 1024**3
+OUTPUT_LIMIT_BYTES = 2 * 1024**3
+STAGE_TIMEOUT_S = 300
+TAIL_LINES = 30
+PROBE_ITERATIONS = 3
 DATASET_SENTINEL = "dataset_manifest.json"
 CODE_SENTINEL = "code_manifest.json"
 # Kaggle documents up to 9 h for a GPU session (unverified by the author of this script); the
@@ -65,11 +77,14 @@ RELEVANT_PACKAGES = (
 LOCK_REQUIRED = ("rfdetr", "supervision", "ultralytics")
 LOCK_OPTIONAL = ("pycocotools", "torchmetrics", "pytorch-lightning")
 NEVER_INSTALL = ("torch", "torchvision", "torchaudio")
-# every package the constraints file freezes at the version the Kaggle image already has
+# The constraints file freezes ONLY the compiled core, at the versions the Kaggle image has.
+# Pure-Python training libraries (torchmetrics, pytorch-lightning, peft, transformers,
+# pycocotools, pydantic) are NOT frozen: smoke run 2 failed because the image's torchmetrics
+# 1.9.0 was frozen while rfdetr[train] 1.11.0 needs torchmetrics<1.9.0. pip's default
+# only-if-needed strategy leaves them alone unless a pin requires a change.
 FROZEN = (
-    *NEVER_INSTALL, "numpy", "opencv-python", "opencv-python-headless", "opencv-contrib-python",
-    "pillow", "scipy", "pydantic", "transformers", "peft", "pycocotools", "pytorch-lightning",
-    "torchmetrics",
+    *NEVER_INSTALL, "numpy", "scipy", "pillow", "opencv-python", "opencv-python-headless",
+    "opencv-contrib-python",
 )  # fmt: skip
 MODELS = ("rfdetr", "yolo11n")
 DETECTOR_FILE = {"rfdetr": "detector.pth", "yolo11n": "detector_yolo11n.pt"}
@@ -167,11 +182,11 @@ def pins_from_lock(lock_text: str) -> list[str]:
 
 
 def constraints_text(installed: dict[str, str]) -> str:
-    """A pip constraints file that freezes every package of ``FROZEN`` that is installed
-    (torch, torchvision, torchaudio, numpy, opencv, pillow, scipy, pydantic, transformers,
-    peft, pycocotools, pytorch-lightning, torchmetrics) at its installed version, so no install
-    can replace the image's CUDA build or its core stack. A pin that cannot be met together
-    with these stops the run, and ``conflicting_packages`` names the culprits."""
+    """A pip constraints file that freezes every package of ``FROZEN`` (the core: torch,
+    torchvision, torchaudio, numpy, scipy, pillow, opencv) that is installed at its installed
+    version, so no install can replace the image's CUDA build or its core stack. Nothing else
+    is frozen. A pin that cannot be met together with these stops the run, and
+    ``conflicting_packages`` names the culprits."""
     lines = [f"{n}=={installed[n]}" for n in FROZEN if n in installed]
     return "\n".join(lines) + "\n"
 
@@ -228,10 +243,48 @@ def conflicting_packages(pip_output: str) -> list[str]:
     return out
 
 
-def pip_install_cmd(pins: list[str], constraints_path: Path) -> list[str]:
-    return [
-        sys.executable, "-m", "pip", "install", "--no-input", "-c", str(constraints_path), *pins
-    ]  # fmt: skip
+def pip_install_cmd(pins: list[str], constraints_path: Path, dry_run: bool = False) -> list[str]:
+    cmd = [sys.executable, "-m", "pip", "install", "--no-input", "-c", str(constraints_path)]
+    if dry_run:
+        cmd.append("--dry-run")
+    return [*cmd, *pins]
+
+
+def pip_supports_dry_run(install_help: str) -> bool:
+    """Does ``pip install --help`` list ``--dry-run`` (pip 22.2 and later)?"""
+    return "--dry-run" in install_help
+
+
+def parse_dry_run_plan(pip_output: str) -> list[tuple[str, str]]:
+    """(normalised name, version) of every package on pip's ``Would install ...`` line(s)."""
+    plan: list[tuple[str, str]] = []
+    for m in re.finditer(r"(?m)^Would install (.+)$", pip_output):
+        for token in m.group(1).split():
+            parts = re.match(r"(.+?)-(\d.*)$", token)
+            plan.append((norm(parts.group(1)), parts.group(2)) if parts else (norm(token), ""))
+    return plan
+
+
+def plan_core_changes(plan: list[tuple[str, str]]) -> list[str]:
+    """The core packages (``FROZEN``) a plan would install or replace, sorted."""
+    core = {norm(n) for n in FROZEN}
+    return sorted({name for name, _v in plan if name in core})
+
+
+def apply_plan(installed: dict[str, str], plan: list[tuple[str, str]]) -> dict[str, str]:
+    """``installed`` as it would be after ``plan``."""
+    return {**installed, **dict(plan)}
+
+
+def describe_changes(before: dict[str, str], after: dict[str, str]) -> list[str]:
+    """One line per package added or changed between two ``name -> version`` maps."""
+    lines = []
+    for name in sorted(after):
+        if name not in before:
+            lines.append(f"added   {name} {after[name]}")
+        elif before[name] != after[name]:
+            lines.append(f"changed {name} {before[name]} -> {after[name]}")
+    return lines
 
 
 def looks_like_conflict(pip_output: str) -> bool:
@@ -245,6 +298,255 @@ def looks_like_conflict(pip_output: str) -> bool:
             "no matching distribution",
         )
     )
+
+
+# --- temp folder and output size (pure, probes injected) -----------------------------------
+
+
+def free_bytes(path: Path, must_exist: bool = False) -> int | None:
+    """Free bytes on the volume holding ``path`` (its nearest existing parent, unless
+    ``must_exist``); None if it cannot be told."""
+    p = Path(path)
+    if must_exist and not p.exists():
+        return None
+    while not p.exists() and p != p.parent:
+        p = p.parent
+    try:
+        return shutil.disk_usage(p).free
+    except OSError:
+        return None
+
+
+def choose_temp_root(
+    free, need_bytes: int = TEMP_NEED_BYTES, candidates: tuple[Path, ...] = TEMP_CANDIDATES
+) -> tuple[Path, str]:
+    """Where the datasets and the code are staged: the first candidate with at least
+    ``need_bytes`` free, and a sentence saying which and why. ``free(path_string)`` returns
+    the free bytes or None when the candidate is absent (the real probe needs /kaggle/temp to
+    exist; /tmp/work is created on demand). Raises ``DiscoveryError`` naming every candidate
+    when none has room."""
+    notes = []
+    for c in candidates:
+        got = free(c.as_posix())
+        if got is None:
+            notes.append(f"{c.as_posix()} is not available")
+        elif got < need_bytes:
+            notes.append(
+                f"{c.as_posix()} too small ({size_text(got)} free, need {size_text(need_bytes)})"
+            )
+        else:
+            why = f"using {c.as_posix()} ({size_text(got)} free)"
+            return c, why + (f"; {'; '.join(notes)}" if notes else "")
+    raise DiscoveryError("no temp folder with room: " + "; ".join(notes))
+
+
+def temp_free_probe(path: str) -> int | None:
+    """The real probe for ``choose_temp_root``: /kaggle/temp must exist, /tmp/work need not."""
+    return free_bytes(Path(path), must_exist=path == TEMP_CANDIDATES[0].as_posix())
+
+
+def dir_size(root: Path) -> int:
+    """Total bytes of the files under ``root`` (links not followed); 0 if it is missing."""
+    total = 0
+    for cur, _dirs, files in os.walk(root):
+        for f in files:
+            try:
+                total += os.lstat(os.path.join(cur, f)).st_size
+            except OSError:
+                pass
+    return total
+
+
+def output_size_check(root: Path, limit_bytes: int = OUTPUT_LIMIT_BYTES) -> tuple[bool, list[str]]:
+    """(ok, lines): the total size of ``root`` against ``limit_bytes``, with the biggest
+    entries named so a failure says what to remove."""
+    root = Path(root)
+    total = dir_size(root)
+    ok = total <= limit_bytes
+    head = f"output size of {root}: {size_text(total)} (limit {size_text(limit_bytes)}): " + (
+        "OK" if ok else "EXCEEDS THE LIMIT: the kernel output is too large to download"
+    )
+    lines = [head]
+    if root.is_dir() and (not ok or total > limit_bytes // 4):
+        entries = []
+        for e in root.iterdir():  # two levels, so outputs/<big thing> is named
+            entries.append((dir_size(e) if e.is_dir() else e.lstat().st_size, e.name))
+            if e.is_dir():
+                for c in e.iterdir():
+                    n = dir_size(c) if c.is_dir() else c.lstat().st_size
+                    entries.append((n, f"{e.name}/{c.name}"))
+        for n, name in sorted(entries, reverse=True)[:6]:
+            lines.append(f"  {size_text(n):>10}  {name}")
+    return ok, lines
+
+
+# --- stages (collect-all smoke) ------------------------------------------------------------
+
+
+def tail_lines(text: str, n: int = TAIL_LINES) -> list[str]:
+    return text.splitlines()[-n:] if n > 0 else []
+
+
+def subprocess_result(r: dict, log: Path, detail: dict | None = None) -> dict:
+    """The stage-function result of a ``run_logged`` outcome."""
+    if r.get("timed_out"):
+        message = f"timed out after {fmt_seconds(r['seconds'])} ({r['seconds']:.0f} s)"
+    elif r["returncode"] != 0:
+        message = f"exit {r['returncode']}"
+    else:
+        message = ""
+    return {
+        "ok": r["returncode"] == 0 and not r.get("timed_out"),
+        "log": log,
+        "message": message,
+        "detail": {"returncode": r["returncode"], "seconds": r["seconds"], **(detail or {})},
+    }
+
+
+def run_stage(name: str, fn, clock=time.monotonic) -> dict:
+    """Run ``fn()`` (returns ``{"ok": bool, "log": Path|None, "message": str, "detail": dict}``)
+    inside its own guard: any exception is a failed stage, never an escape. The record has
+    ``name``, ``status`` (ok or failed), ``ok``, ``seconds``, ``message``, ``detail`` and, on
+    failure, ``tail``: the last 30 lines of the stage's log (or its traceback)."""
+    t0 = clock()
+    tail: list[str] = []
+    try:
+        res = fn()
+        ok = bool(res.get("ok"))
+        message, detail, log = res.get("message", ""), res.get("detail", {}), res.get("log")
+        if not ok:
+            if log and Path(log).is_file():
+                tail = tail_lines(Path(log).read_text(encoding="utf-8", errors="replace"))
+            if not tail:
+                tail = [message or "no output"]
+    except Exception as e:  # noqa: BLE001 - one stage must never stop the others
+        import traceback
+
+        ok, detail = False, {}
+        message = f"{type(e).__name__}: {e}"
+        tail = tail_lines(traceback.format_exc())
+    return {
+        "name": name,
+        "status": "ok" if ok else "failed",
+        "ok": ok,
+        "seconds": round(clock() - t0, 1),
+        "message": message,
+        "detail": detail,
+        "tail": [] if ok else tail,
+    }
+
+
+def skipped_stage(name: str, why: str) -> dict:
+    return {
+        "name": name, "status": "skipped", "ok": False, "seconds": 0.0, "message": why,
+        "detail": {}, "tail": [],
+    }  # fmt: skip
+
+
+def stage_table(stages: list[dict]) -> list[str]:
+    lines = [f"{'stage':24} {'status':8} {'seconds':>8}  note"]
+    for st in stages:
+        lines.append(
+            f"{st['name']:24} {st['status']:8} {st['seconds']:8.1f}  {st.get('message') or ''}"
+        )
+    return lines
+
+
+def smoke_verdict(stages: list[dict]) -> str:
+    """``SMOKE OK`` only if every stage is ok, else ``SMOKE PARTIAL: <names of the others>``
+    (a skipped stage counts: it did not pass)."""
+    if not stages:
+        return "SMOKE PARTIAL: no stage ran"
+    failing = [st["name"] for st in stages if st["status"] != "ok"]
+    return "SMOKE OK" if not failing else "SMOKE PARTIAL: " + ", ".join(failing)
+
+
+# --- the RF-DETR training probe ------------------------------------------------------------
+
+# Runs in a child process (``python -c``), cwd = the code folder: three real training
+# iterations of RF-DETR-Nano on the real dataset at batch 4, timed per iteration (data loading
+# included), with the GPU memory peak. It wraps pytorch_lightning's Trainer so that train()
+# stops after N batches with no validation; everything else is the project's own call.
+PROBE_SOURCE = r"""
+import json, sys, time, traceback
+from pathlib import Path
+import torch
+import pytorch_lightning as pl
+from pytorch_lightning.callbacks import Callback
+
+dataset_dir, weights, out_dir, n_iter = sys.argv[1], sys.argv[2], sys.argv[3], int(sys.argv[4])
+stamps = []
+
+
+class Probe(Callback):
+    def on_train_start(self, trainer, module):
+        torch.cuda.reset_peak_memory_stats()
+        torch.cuda.synchronize()
+        stamps.append(time.perf_counter())
+
+    def on_train_batch_end(self, trainer, module, outputs, batch, batch_idx):
+        torch.cuda.synchronize()
+        stamps.append(time.perf_counter())
+        print(f"PROBE iteration {len(stamps) - 1}: {stamps[-1] - stamps[-2]:.3f} s", flush=True)
+
+
+_orig_init = pl.Trainer.__init__
+
+
+def _patched_init(self, *args, **kwargs):
+    kwargs.update(limit_train_batches=n_iter, limit_val_batches=0, num_sanity_val_steps=0)
+    kwargs["callbacks"] = [*(kwargs.get("callbacks") or []), Probe()]
+    _orig_init(self, *args, **kwargs)
+
+
+pl.Trainer.__init__ = _patched_init
+error = None
+try:
+    from rfdetr import RFDETRNano
+    from training.autolabel import load_classes
+    from training.finetune import rfdetr_train_kwargs, seed_everything
+
+    classes = load_classes(Path("config/experiment.json"))
+    seed_everything(0)
+    kw = rfdetr_train_kwargs(Path(dataset_dir), Path(out_dir), 1, 5e-5, 4, 1, 0, classes)
+    RFDETRNano(pretrain_weights=weights).train(**kw)
+except Exception as e:  # train() may complain after the probe batches (no validation ran)
+    error = repr(e)
+    traceback.print_exc()
+deltas = [b - a for a, b in zip(stamps, stamps[1:])]
+steady = deltas[1:] or deltas
+result = {
+    "iterations": len(deltas),
+    "seconds_each": [round(d, 3) for d in deltas],
+    "seconds_first": round(deltas[0], 3) if deltas else None,
+    "seconds_per_iteration": round(sum(steady) / len(steady), 3) if steady else None,
+    "gpu_peak_mb": round(torch.cuda.max_memory_allocated() / 1024**2, 1),
+    "gpu_reserved_peak_mb": round(torch.cuda.max_memory_reserved() / 1024**2, 1),
+    "batch_size": 4,
+    "error_after_probe": error if len(deltas) >= n_iter else None,
+}
+print("PROBE_RESULT " + json.dumps(result), flush=True)
+sys.exit(0 if len(deltas) >= n_iter else 1)
+"""
+
+
+def probe_cmd(dataset_dir: Path, weights: Path, out_dir: Path, iterations: int) -> list[str]:
+    return [
+        sys.executable, "-c", PROBE_SOURCE, str(dataset_dir), str(weights), str(out_dir),
+        str(iterations),
+    ]  # fmt: skip
+
+
+def parse_probe(text: str) -> dict | None:
+    """The JSON of the last ``PROBE_RESULT`` line, or None."""
+    found = None
+    for line in text.splitlines():
+        if line.startswith("PROBE_RESULT "):
+            try:
+                found = json.loads(line[len("PROBE_RESULT ") :])
+            except ValueError:
+                found = None
+    return found
 
 
 # --- time guard (pure, clock injected) ---------------------------------------------------
@@ -630,6 +932,8 @@ def smoke_report(
     pip_seconds: float | None,
     dataset_stamp: str | None,
     problems: list[str],
+    stages: list[dict] | None = None,
+    extra: dict | None = None,
 ) -> dict:
     models = {}
     for m in MODELS:
@@ -670,6 +974,9 @@ def smoke_report(
         "pip_install_seconds": pip_seconds,
         "problems": problems,
         "ok": not problems,
+        "stages": stages or [],
+        "verdict": smoke_verdict(stages) if stages else None,
+        **(extra or {}),
     }
 
 
@@ -904,16 +1211,17 @@ def installed_versions() -> dict[str, str]:
 # --- the run ----------------------------------------------------------------------------
 
 
-def prepare(guard: TimeGuard) -> dict:
+def prepare(guard: TimeGuard, tmp_root: Path) -> dict:
     """Locate, verify and stage the two datasets wherever Kaggle mounted them (see
-    ``stage_tree``). Any discovery problem stops the run with what was examined."""
+    ``stage_tree``) under ``tmp_root``, never under /kaggle/working (the kernel output). Any
+    discovery problem stops the run with what was examined."""
     assert PACKAGE is not None, "this script was not generated by training.kaggle_pack"
     try:
         ds_manifest = read_manifest(INPUT, DATASET_SENTINEL, "dataset")
         code_manifest = read_manifest(INPUT, CODE_SENTINEL, "code")
         data_root = stage_tree(
             INPUT,
-            WORK / "data" / "dataset",
+            tmp_root / "data" / "dataset",
             ds_manifest["files"],
             ds_manifest["zip"]["name"],
             [PACKAGE["dataset_zip_sha256"], ds_manifest["zip"]["sha256"]],
@@ -929,7 +1237,7 @@ def prepare(guard: TimeGuard) -> dict:
         print(f"dataset OK: {len(ds_manifest['files'])} files verified by sha256 in {data_root}")
         code_root = stage_tree(
             INPUT,
-            WORK / "code",
+            tmp_root / "code",
             code_manifest["files"],
             code_manifest["zip"]["name"],
             [PACKAGE["code_zip_sha256"], code_manifest["zip"]["sha256"]],
@@ -972,52 +1280,112 @@ def verify_unzipped(code_root: Path, data_root: Path) -> None:
         stop("verify_dataset reported problems on the unzipped data (see above)", 2)
 
 
-def install_pins(code_root: Path) -> float:
+def installed_all() -> dict[str, str]:
+    """name -> version of every installed distribution (names normalised)."""
+    import importlib.metadata as md
+
+    out = {}
+    for d in md.distributions():
+        name = d.metadata["Name"]
+        if name:
+            out[norm(name)] = d.version
+    return out
+
+
+def stop_on_pip_failure(r: dict, text: str, frozen: list[str], what: str) -> None:
+    names = conflicting_packages(text)
+    if looks_like_conflict(text):
+        stop(
+            f"pip cannot satisfy the pins together with the frozen core ({what}; frozen: "
+            f"{sorted(frozen)}). Conflicting packages named by pip: "
+            f"{names or 'see the pip output above'}. Nothing was reinstalled. Report it; "
+            "do not force a package change on Kaggle.",
+            3,
+        )
+    stop(f"pip install failed ({what}, exit {r['returncode']}); see above", 3)
+
+
+def install_pins(code_root: Path) -> dict:
+    """pip install of the pins with the core frozen. First ``--dry-run`` (when this pip has
+    it): the plan is printed and a plan that would change a core package stops the run. After
+    the real install the core versions are asserted unchanged and every package pip added or
+    changed is printed."""
     print(
         "\n== install pinned packages (torch and the core stack stay as Kaggle has them) ==",
         flush=True,
     )
-    before = installed_versions()
-    print("frozen at the installed versions:", json.dumps(before, indent=1), sep="\n")
+    core_before = installed_versions()
+    all_before = installed_all()
+    print("core frozen at the installed versions:", json.dumps(core_before, indent=1), sep="\n")
     pins, notes = drop_installed_optional(
-        pins_from_lock((code_root / "uv.lock").read_text(encoding="utf-8")), before
+        pins_from_lock((code_root / "uv.lock").read_text(encoding="utf-8")), all_before
     )
     print("\n".join(notes))
     print("pins:", *pins, sep="\n  ")
-    cons = WORK / "constraints.txt"
-    cons.write_text(constraints_text(before), encoding="utf-8")
+    cons = OUT / "constraints.txt"
+    cons.write_text(constraints_text(core_before), encoding="utf-8")
+    plan_lines: list[str] | None = None
+    help_text = capture([sys.executable, "-m", "pip", "install", "--help"], 60)
+    if pip_supports_dry_run(help_text):
+        print("\n-- pip install --dry-run: the plan --", flush=True)
+        log = OUT / "pip_dry_run.log"
+        r = run_logged(
+            pip_install_cmd(pins, cons, dry_run=True), log, cwd=code_root, timeout_s=900,
+            env=child_env(),
+        )  # fmt: skip
+        text = log.read_text(encoding="utf-8", errors="replace")
+        if r["returncode"] != 0:
+            stop_on_pip_failure(r, text, list(core_before), "dry run")
+        plan = parse_dry_run_plan(text)
+        plan_lines = describe_changes(all_before, apply_plan(all_before, plan))
+        print(f"pip plan: {len(plan)} packages would be installed")
+        print("\n".join(f"  {x}" for x in plan_lines) or "  (nothing changes)")
+        core = plan_core_changes(plan)
+        if core:
+            stop(
+                f"the pip plan would change core packages {core}; nothing was installed. "
+                "Report it; do not force a package change on Kaggle.",
+                3,
+            )
+        print("plan leaves the core alone; installing", flush=True)
+    else:
+        print("this pip has no --dry-run: installing without a plan (core checked afterwards)")
     t0 = time.monotonic()
     log = OUT / "pip_install.log"
     r = run_logged(pip_install_cmd(pins, cons), log, cwd=code_root, timeout_s=1800, env=child_env())
     seconds = time.monotonic() - t0
     text = log.read_text(encoding="utf-8", errors="replace")
-    names = conflicting_packages(text)
     if r["returncode"] != 0:
-        if looks_like_conflict(text):
-            stop(
-                "pip cannot satisfy the pins together with what Kaggle already has installed "
-                f"(frozen: {sorted(before)}). Conflicting packages named by pip: "
-                f"{names or 'see the pip output above'}. Nothing was reinstalled. Report it; "
-                "do not force a package change on Kaggle.",
-                3,
-            )
-        stop(f"pip install failed (exit {r['returncode']}); see above", 3)
+        stop_on_pip_failure(r, text, list(core_before), "install")
+    names = conflicting_packages(text)
     if names:
         print(f"WARNING: pip reports incompatible requirements involving: {names}")
-    after = installed_versions()
-    moved = changed_packages(before, after)
+    moved = changed_packages(core_before, installed_versions())
     if moved:
-        stop(f"frozen packages changed during install: {moved}: {before} -> {after}", 3)
-    print(f"pip install finished in {fmt_seconds(seconds)}; frozen packages unchanged")
-    return seconds
+        stop(
+            f"core packages changed during install: {moved}: {core_before} -> "
+            f"{installed_versions()}",
+            3,
+        )
+    changes = describe_changes(all_before, installed_all())
+    print(f"pip install finished in {fmt_seconds(seconds)}; core packages unchanged")
+    print("packages pip added or changed:")
+    print("\n".join(f"  {x}" for x in changes) or "  (none)")
+    (OUT / "pip_freeze.txt").write_text(
+        capture([sys.executable, "-m", "pip", "freeze"], 120), encoding="utf-8"
+    )
+    return {"seconds": seconds, "changes": changes, "plan": plan_lines}
 
 
 def read_report(code_root: Path) -> dict:
     return json.loads((code_root / "reports" / "dataset.json").read_text(encoding="utf-8"))
 
 
-def run_smoke(paths: dict, machine: dict, pip_seconds: float | None) -> int:
-    code_root, weights = paths["code_root"], paths["weights"]
+def run_smoke(paths: dict, machine: dict, pip: dict) -> int:
+    """Five guarded stages (see the module docstring); a failed stage is recorded and the
+    rest still run. Returns 0 only if every stage passed and the outputs are small enough."""
+    code_root, data_root, weights = paths["code_root"], paths["data_root"], paths["weights"]
+    scratch = paths["tmp_root"] / "smoke"  # training scratch: never under /kaggle/working
     sys.path.insert(0, str(code_root))
     from training.finetune import default_epochs
 
@@ -1026,48 +1394,116 @@ def run_smoke(paths: dict, machine: dict, pip_seconds: float | None) -> int:
     epochs = default_epochs(n_train)
     print(f"\n== SMOKE: n_train {n_train}, epochs {epochs} (S-E rule) ==", flush=True)
     t0 = time.monotonic()
-    problems: list[str] = []
     preflight: dict[str, dict] = {}
     dry: dict[str, dict] = {}
-    for model in MODELS:
-        w = weights[WEIGHT_FILE[model]]
-        print(f"\n-- gpu_preflight {model} --", flush=True)
-        log = OUT / f"smoke_preflight_{model}.log"
+
+    def preflight_stage(model: str):
+        def fn() -> dict:
+            log = OUT / f"smoke_preflight_{model}.log"
+            r = run_logged(
+                preflight_cmd(model, weights[WEIGHT_FILE[model]], n_train, epochs), log,
+                cwd=code_root, timeout_s=STAGE_TIMEOUT_S, env=child_env(),
+            )  # fmt: skip
+            parsed = parse_preflight(log.read_text(encoding="utf-8", errors="replace"))
+            preflight[model] = {**parsed, "returncode": r["returncode"]}
+            return subprocess_result(r, log, parsed)
+
+        return fn
+
+    def dry_run_stage(model: str):
+        def fn() -> dict:
+            out_dir, w = scratch / model, weights[WEIGHT_FILE[model]]
+            log = OUT / f"smoke_dry_run_{model}.log"
+            r = run_logged(
+                dry_run_cmd(model, w, out_dir, code_root / "reports" / "dataset.json"),
+                log, cwd=code_root, timeout_s=STAGE_TIMEOUT_S, env=child_env(),
+            )  # fmt: skip
+            dry[model] = {"returncode": r["returncode"], "seconds": r["seconds"]}
+            summary = out_dir / "train_summary.json"  # the only file kept: weights stay in temp
+            if summary.is_file():
+                keep = OUT / "smoke" / model
+                keep.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(summary, keep / summary.name)
+            return subprocess_result(r, log)
+
+        return fn
+
+    def probe_stage() -> dict:
+        log, w = OUT / "smoke_probe_rfdetr.log", weights[WEIGHT_FILE["rfdetr"]]
         r = run_logged(
-            preflight_cmd(model, w, n_train, epochs),
-            log,
-            cwd=code_root,
-            timeout_s=SMOKE_BUDGET_S,
-            env=child_env(),
-        )
-        parsed = parse_preflight(log.read_text(encoding="utf-8", errors="replace"))
-        preflight[model] = {**parsed, "returncode": r["returncode"]}
-        if r["returncode"] != 0:
-            problems.append(f"gpu_preflight {model} exited {r['returncode']}")
-    for model in MODELS:
-        w = weights[WEIGHT_FILE[model]]
-        print(f"\n-- finetune --dry-run {model} (6 synthetic images) --", flush=True)
-        r = run_logged(
-            dry_run_cmd(model, w, OUT / "smoke" / model, code_root / "reports" / "dataset.json"),
-            OUT / f"smoke_dry_run_{model}.log",
-            cwd=code_root,
-            timeout_s=SMOKE_BUDGET_S,
-            env=child_env(),
-        )
-        dry[model] = {"returncode": r["returncode"], "seconds": r["seconds"]}
-        if r["returncode"] != 0:
-            problems.append(f"finetune --dry-run {model} exited {r['returncode']}")
+            probe_cmd(data_root, w, scratch / "probe", PROBE_ITERATIONS),
+            log, cwd=code_root, timeout_s=STAGE_TIMEOUT_S, env=child_env(),
+        )  # fmt: skip
+        probe = parse_probe(log.read_text(encoding="utf-8", errors="replace"))
+        res = subprocess_result(r, log, {"probe": probe})
+        if probe is None and res["ok"]:
+            res.update(ok=False, message="the probe printed no PROBE_RESULT line")
+        elif probe is not None:
+            line = (
+                f"PROBE rfdetr batch 4, {probe['iterations']} iterations: "
+                f"{probe['seconds_per_iteration']} s per iteration "
+                f"(each {probe['seconds_each']}), GPU memory peak {probe['gpu_peak_mb']} MB "
+                f"allocated / {probe['gpu_reserved_peak_mb']} MB reserved"
+            )
+            print(line, flush=True)
+            res["message"] = (
+                res["message"]
+                or f"{probe['seconds_per_iteration']} s/iter, {probe['gpu_peak_mb']} MB peak"
+            )
+        return res
+
+    stages: list[dict] = []
+    for name, fn in (
+        ("preflight_rfdetr", preflight_stage("rfdetr")),
+        ("preflight_yolo11n", preflight_stage("yolo11n")),
+        ("dry_run_rfdetr", dry_run_stage("rfdetr")),
+        ("dry_run_yolo11n", dry_run_stage("yolo11n")),
+    ):
+        print(f"\n-- stage {name} (timeout {STAGE_TIMEOUT_S} s) --", flush=True)
+        stages.append(run_stage(name, fn))
+        print(f"-- stage {name}: {stages[-1]['status']} in {stages[-1]['seconds']} s", flush=True)
+    name = "train_probe_rfdetr"
+    if stages[2]["ok"]:
+        print(f"\n-- stage {name} (timeout {STAGE_TIMEOUT_S} s) --", flush=True)
+        stages.append(run_stage(name, probe_stage))
+        print(f"-- stage {name}: {stages[-1]['status']} in {stages[-1]['seconds']} s", flush=True)
+    else:
+        stages.append(skipped_stage(name, "dry_run_rfdetr did not pass"))
+
     smoke_seconds = time.monotonic() - t0
+    problems = [f"{st['name']}: {st['message'] or st['status']}" for st in stages if not st["ok"]]
+    print("\n" + "=" * 78 + "\nSTAGE TABLE")
+    print("\n".join(stage_table(stages)))
+    for st in stages:
+        if st["tail"]:
+            print(f"\n-- last {TAIL_LINES} lines of {st['name']} ({st['status']}) --")
+            print("\n".join(st["tail"]))
+    size_ok, size_lines = output_size_check(WORK, OUTPUT_LIMIT_BYTES)
     rep = smoke_report(
         machine=machine, n_train=n_train, epochs=epochs, preflight=preflight, dry_runs=dry,
-        smoke_seconds=smoke_seconds, pip_seconds=pip_seconds,
-        dataset_stamp=report.get("dataset_stamp"), problems=problems,
+        smoke_seconds=smoke_seconds, pip_seconds=pip.get("seconds"),
+        dataset_stamp=report.get("dataset_stamp"), problems=problems, stages=stages,
+        extra={
+            "pip_changes": pip.get("changes"),
+            "pip_plan": pip.get("plan"),
+            "temp_root": str(paths["tmp_root"]),
+            "temp_note": paths["tmp_note"],
+            "outputs_size_ok": size_ok,
+            "outputs_size_text": size_lines[0],
+        },
     )  # fmt: skip
     (OUT / "smoke_report.json").write_text(json.dumps(rep, indent=1), encoding="utf-8")
     print("\n" + "=" * 78 + "\nSMOKE REPORT\n" + json.dumps(rep, indent=1))
     print(f"\nsmoke part took {fmt_seconds(smoke_seconds)} (budget {fmt_seconds(SMOKE_BUDGET_S)})")
-    print("SMOKE " + ("OK" if rep["ok"] else "FAILED: " + "; ".join(problems)), flush=True)
-    return 0 if rep["ok"] else 1
+    print("\n".join(size_lines))
+    if not size_ok:
+        print(
+            "OUTPUT TOO LARGE: the run fails on size alone (the stages above are unaffected); "
+            "remove the largest entries named above or write them to the temp folder",
+            flush=True,
+        )
+    print(rep["verdict"], flush=True)  # the last line: SMOKE OK or SMOKE PARTIAL: <stages>
+    return 0 if rep["ok"] and size_ok else 1
 
 
 def run_full(paths: dict, machine: dict, guard: TimeGuard) -> int:
@@ -1159,15 +1595,28 @@ def main() -> int:
             "CUDA is not available in this kernel: enable a GPU accelerator in the kernel settings",
             2,
         )
-    paths = prepare(guard)
+    try:
+        tmp_root, tmp_note = choose_temp_root(temp_free_probe)
+    except DiscoveryError as e:
+        stop(str(e), 2)
+    tmp_root.mkdir(parents=True, exist_ok=True)
+    print(f"temp folder for datasets, code and training scratch: {tmp_note}")
+    print(f"{WORK} keeps only outputs/ (limit {size_text(OUTPUT_LIMIT_BYTES)})", flush=True)
+    paths = prepare(guard, tmp_root)
+    paths.update(tmp_root=tmp_root, tmp_note=tmp_note)
     sys.path.insert(0, str(paths["code_root"]))
     verify_unzipped(paths["code_root"], paths["data_root"])
-    pip_seconds = install_pins(paths["code_root"])
+    pip = install_pins(paths["code_root"])
     machine = machine_info()
     if MODE == "SMOKE":
-        return run_smoke(paths, machine, pip_seconds)
+        return run_smoke(paths, machine, pip)
     if MODE == "FULL":
-        return run_full(paths, machine, guard)
+        rc = run_full(paths, machine, guard)
+        size_ok, size_lines = output_size_check(WORK, OUTPUT_LIMIT_BYTES)
+        print("\n".join(size_lines))
+        if not size_ok:
+            print("OUTPUT TOO LARGE: the run fails on size alone; the training itself finished")
+        return rc if size_ok else max(rc, 1)
     stop(f"MODE must be SMOKE or FULL, got {MODE!r}", 2)
     return 2
 
