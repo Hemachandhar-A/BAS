@@ -1456,3 +1456,43 @@ Pipeline view, median detector + median hands + 5 ms (budget 125 ms = 8 fps). De
 **target_fps proposal: 10**, to be verified at the pipeline stage. Basis: about 50 ms per frame for detector and hands (YOLO11n 19-20 ms, hands 27 ms, plus 5 ms overhead) leaves about 50 ms of the 100 ms frame budget for tracking, streaming and speech. `min_pipeline_fps` stays 8.
 
 **Follow-ups.** Adding `ultralytics` (and the detector backends) to the `run` dependency groups is a P2 lockfile change, not done here. The detector toggle code is not built here. Both are for the pipeline stage.
+
+## 2026-10-03 P1.5 (S-F2b) - test evaluation of YOLO11n and MANIFEST
+
+**Scope.** Record the choice (DECISION entry, commit f0e2983, pushed before any test evaluation), evaluate the CHOSEN detector once on test, write `weights/MANIFEST.json`. Branch p1-perception.
+
+**Acceptance file.** `git diff c89bee8 -- config/acceptance.yaml` is empty (unchanged). sha256 `477b2be4a016c6bf3dd0c5e834dec391a155131fce1c851d777c0259eff30db5`, also recorded in the report.
+
+**Test evaluation, YOLO11n, once** (`reports/detector_eval_test_yolo11n.json`; weights sha256 cb9cd840...1613; dataset stamp 1bea0958699991df; floor 0.3, IoU 0.5; CPU). The first attempt (`--device auto`) aborted on the first frame with "Invalid CUDA device=0" (the auto setting selects CUDA for YOLO, this laptop has none); it produced no prediction and no report, so nothing was seen. The same command with `--device cpu` (as in S-F2a) ran to completion and is the one evaluation. Follow-up: `eval_detector --device auto` should fall back to CPU when CUDA is unavailable (not changed here).
+
+All 213 frames (precision / recall at the floor; mAP50 0.9971, mAP50-95 0.9615):
+
+| class | precision | recall | n_gt | n_pred |
+|---|---|---|---|---|
+| outer_box | 1.000 | 1.000 | 213 | 213 |
+| tray | 1.000 | 1.000 | 213 | 213 |
+| red_box | 0.9724 | 0.9906 | 213 | 217 |
+| yellow_box | 0.9628 | 0.9718 | 213 | 215 |
+| start_button | 1.000 | 1.000 | 213 | 213 |
+
+Gold, 80 frames (mAP50 0.9988, mAP50-95 0.9540):
+
+| class | precision | recall | n_gt | n_pred |
+|---|---|---|---|---|
+| outer_box | 1.000 | 1.000 | 80 | 80 |
+| tray | 1.000 | 1.000 | 80 | 80 |
+| red_box | 0.9639 | 1.000 | 80 | 83 |
+| yellow_box | 0.9620 | 0.950 | 80 | 79 |
+| start_button | 1.000 | 1.000 | 80 | 80 |
+
+Gold by hand: with the hand over a container 56 frames (mAP50 0.9979, mAP50-95 0.9389; red recall 1.000, yellow 0.929, others 1.000); hand elsewhere 24 frames (mAP50 1.000, mAP50-95 0.9868; every class precision and recall 1.000); 0 without hand data. All gold misses are in the hand-over-container group (4 yellow misses, all there).
+
+Red/yellow confusion (best-IoU >= 0.5 at the floor). All frames: red 211 red, 1 yellow, 1 missed; yellow 207 yellow, 0 red, 6 missed. Gold: red 80 red, 0 yellow, 0 missed; yellow 76 yellow, 0 red, 4 missed. One red box in the all-frames set was taken for yellow (not in gold); there is no yellow-as-red case.
+
+**Acceptance verdict (gold test vs `config/acceptance.yaml`):** recall >= 0.85 per class: outer_box PASS 1.000, tray PASS 1.000, red_box PASS 1.000, yellow_box PASS 0.950, start_button PASS 1.000; mAP50 >= 0.80: PASS 0.9988. **Detector acceptance: PASS.** (The pipeline, replay and label-review criteria are not part of this session.)
+
+**MANIFEST** (`weights/MANIFEST.json`, committed; the weights stay git-ignored): `active_detector` yolo11n; `detectors` lists yolo11n (AGPL-3.0, test_evaluated true, validated_for_pipeline true, valid and test reports) and rfdetr_nano (Apache-2.0, validated_for_pipeline false, test_evaluated false, note "tune and replay when time permits", valid report only), each with file, sha256, size, classes in order, input size 384, floor 0.3, trained stamp 622c277b5d0e5e06, evaluated stamp 1bea0958699991df, training summary sha256 and the DECISION title; the existing `hand` entry (hand_landmarker.task, sha256 fbc2a300...cde1, Apache-2.0) is kept. `trained_at` is null: the training summaries carry no timestamp. The summaries live in the git-ignored `data/kaggle_upload/`, so the manifest records their hashes, not their paths in git. `tests/unit/training/test_manifest.py` (7 tests): hashes and sizes equal the files (skips when the weights are absent), exactly one active detector, the active one is the only one evaluated on test and its test report carries the same weights sha256, classes equal the experiment in order.
+
+**Caveats.** One performer, one setup, no gloves. Labels partly from the auto-labeler. Valid drove early stopping, so valid numbers are optimistic; test was untouched until this run. Gold test is 80 frames: one yellow miss changes yellow recall by 1.25 points, and the lowest value (0.950) is 10 points above the threshold. Hand data come from the same MediaPipe model, so the hand split is a proxy. Near-ceiling scores mean this acceptance gate is easy to pass and says little about other people or lighting.
+
+**NOT done.** RF-DETR-Nano was not evaluated on test; no retraining; no threshold change; no lockfile change; no toggle code; no runtime integration; no network, download or install. No other test run beyond the single completed evaluation. `reports/dataset.json` was already committed (cdc732f) before this session, so the tree was clean.
