@@ -1371,3 +1371,57 @@ Label status of the labeled review sample so far: 62 ok, 21 excluded (missing re
 **Re-pack (kernel only; `data/kaggle_upload` is git-ignored).** `kernel/run_training.py` 67,063 bytes, sha256 `8085057588ee3524dd7843bd2661b705211f89279d4b5dd78154dbb7b6a05de0` (MODE SMOKE); `kernel/kernel-metadata.json` unchanged (`83f976eac6cfab64195e98e08ddc4181940082672e939491811fd50a64c18672`); `package_manifest.json` refreshed. **code.zip is unchanged** (`f24f9436...`): against HEAD only `training/kaggle/run_training.py` and `training/kaggle_pack.py` differ, both outside what the kernel runs, so no new code dataset version is needed. Push, from `data/kaggle_upload`: `uv tool run kaggle kernels push -p kernel`.
 
 **NOT done / still unverified.** No network action (no Kaggle command, no upload, no push to Kaggle, no pip install, no model run, no training). Unverified: (1) the pip install itself on Kaggle (the dry-run plan format, torchmetrics actually moving to 1.8.x, torch-hungarian's pre-release pin and the other new packages building on Python 3.13); (2) the RF-DETR train path on Python 3.13, including the new probe, which was only compiled and unit-tested, never run: it patches `pytorch_lightning.Trainer.__init__`, assumes rfdetr builds its Trainer from that class and that `train()` tolerates a run with no validation (any exception after the 3 batches is tolerated and noted); if it fails it only costs the one stage; (3) real GPU speed (the probe and the preflights are what will tell); (4) the 9-hour limit; (5) in FULL mode checkpoints are still written under `/kaggle/working/outputs/<model>` (resumable), so the 2 GB check can fail a FULL run on size alone: decide what to keep before the FULL push.
+
+## 2026-10-03 P1.5 (S-F2a) - valid evaluation, CPU benchmark
+
+**Scope.** Evidence only. No detector chosen, test split never evaluated or read, `weights/MANIFEST.json` not written. Branch p1-perception. Commits: eval_detector extensions a7026fb, valid reports 3d9c07a, benchmark_valid a6854d0, benchmark report 04b292f. Reports: `reports/detector_eval_valid_rfdetr.json`, `reports/detector_eval_valid_yolo11n.json`, `reports/benchmark_cpu_valid.json`. `reports/dataset.json` shows as modified in the working tree (the rebuild's own output, stamp 1bea0958699991df); it is not part of these commits.
+
+**Weights** (copied to git-ignored `weights/`, sha256 equal to each `train_summary.json`): `detector_rfdetr_nano.pth` 82d9f126cb1d36d08713e6a490629aeeba37fd447db9cebf7381f5e64de804bb; `detector_yolo11n.pt` cb9cd840618525058823e4242e8ced9539118dc2f134456785667289e1ab1613. Both were trained on dataset stamp 622c277b5d0e5e06 (train 593 images, 173 valid images); the evaluation ran against the current dataset stamp 1bea0958699991df (valid 211 frames, 88 gold). The stamps differ because the overlays changed after the Lead's gold pass; whether the train images are identical in both stamps was not re-checked here. Floor `detector_conf_floor` = 0.3, IoU 0.5, CPU, valid only.
+
+**Valid, all 211 frames** (precision / recall at the floor per class; each class has 211 ground-truth boxes):
+
+| model | mAP50 | mAP50-95 | outer_box | tray | red_box | yellow_box | start_button |
+|---|---|---|---|---|---|---|---|
+| RF-DETR-Nano | 0.9982 | 0.9778 | 1.000/1.000 | 1.000/1.000 | 0.9953/0.9953 | 0.9765/0.9858 | 0.9906/1.000 |
+| YOLO11n | 0.9984 | 0.9672 | 1.000/1.000 | 1.000/1.000 | 0.9765/0.9858 | 0.9673/0.9810 | 1.000/1.000 |
+
+**Valid, 88 gold frames** (88 ground-truth boxes per class):
+
+| model | mAP50 | mAP50-95 | outer_box | tray | red_box | yellow_box | start_button |
+|---|---|---|---|---|---|---|---|
+| RF-DETR-Nano | 0.9969 | 0.9683 | 1.000/1.000 | 1.000/1.000 | 1.000/1.000 | 0.9773/0.9773 | 0.9888/1.000 |
+| YOLO11n | 0.9963 | 0.9570 | 1.000/1.000 | 1.000/1.000 | 0.9773/0.9773 | 0.9551/0.9659 | 1.000/1.000 |
+
+**Rule (1) eligibility, gold, recall >= 0.85 and mAP50 >= 0.80:** RF-DETR-Nano: outer_box PASS 1.0000, tray PASS 1.0000, red_box PASS 1.0000, yellow_box PASS 0.9773, start_button PASS 1.0000, mAP50 PASS 0.9969 -> ELIGIBLE. YOLO11n: outer_box PASS 1.0000, tray PASS 1.0000, red_box PASS 0.9773, yellow_box PASS 0.9659, start_button PASS 1.0000, mAP50 PASS 0.9963 -> ELIGIBLE. Both are eligible, with a large margin.
+
+**Gold recall by hand over a container** (build_dataset's definition: a hand box intersects a ground-truth red or yellow box; hand cache `data/labels/hands`): 62 gold frames with the hand over a container, 26 with the hand elsewhere, 0 without hand data. With hand over container: RF-DETR red 1.000, yellow 0.9677 (60/62); YOLO11n red 0.9677 (60/62), yellow 0.9516 (59/62); other classes 1.000 for both. Hand elsewhere (26): every class 1.000 for both. All misses of both models are in the hand-over-container group.
+
+**red_box / yellow_box confusion** (each ground-truth box takes the best-IoU >= 0.5 prediction at the floor). All 211 frames: RF-DETR red: 210 red, 0 yellow, 1 missed; yellow: 208 yellow, 0 red, 3 missed. YOLO11n red: 208 red, 0 yellow, 3 missed; yellow: 207 yellow, 0 red, 4 missed. Gold: RF-DETR red 88 red, 0 missed, yellow 86 yellow, 2 missed; YOLO11n red 86, 2 missed, yellow 85, 3 missed. **No red/yellow swap in either model on either subset;** every error is a miss.
+
+**CPU benchmark** (`training/benchmark_valid.py`; valid frames 848x480 BGR, seeded draw, 20 warm-up + 150 timed, per-call perf_counter; model input resolution 384; detector floor 0.3; hands = `perception.hands.HandTracker`, VIDEO mode, frames fed in shuffled order, so tracking gets no temporal help; overhead 5 ms assumed). Machine: AMD Ryzen 5 5600H, 6 cores / 12 logical, Windows Balanced power plan, **on AC power**, torch 2.14.0+cpu, 8 threads as recorded in the run (an interactive probe elsewhere printed 6). Run 1 order: rfdetr, rfdetr-optimized, yolo, hands; run 2 reversed. Median / p95 / mean in ms:
+
+| candidate | run 1 | run 2 |
+|---|---|---|
+| RF-DETR-Nano (predict) | 163.1 / 178.3 / 165.5 | 139.1 / 153.4 / 140.4 |
+| RF-DETR-Nano + optimize_for_inference (extra row) | 152.7 / 168.9 / 154.4 | 126.6 / 138.4 / 127.5 |
+| YOLO11n | 20.0 / 23.0 / 20.3 | 19.0 / 20.3 / 18.8 |
+| MediaPipe hands | 27.0 / 36.7 / 28.3 | 26.5 / 36.7 / 28.4 |
+
+Pipeline view, median detector + median hands + 5 ms (budget 125 ms = 8 fps). Detector on every frame (k=1), every 2nd, every 3rd: average frame time and fps; the slow frame (detector + hands + overhead) is the same for every k:
+
+| detector | run | k=1 | k=2 | k=3 | slow frame |
+|---|---|---|---|---|---|
+| RF-DETR-Nano | 1 | 195.1 ms, 5.1 fps | 113.6 ms, 8.8 fps | 86.4 ms, 11.6 fps | 195.1 |
+| RF-DETR-Nano | 2 | 170.5 ms, 5.9 fps | 101.0 ms, 9.9 fps | 77.8 ms, 12.9 fps | 170.5 |
+| RF-DETR-Nano optimized | 1 | 184.8 ms, 5.4 fps | 108.4 ms, 9.2 fps | 83.0 ms, 12.1 fps | 184.8 |
+| RF-DETR-Nano optimized | 2 | 158.0 ms, 6.3 fps | 94.7 ms, 10.6 fps | 73.6 ms, 13.6 fps | 158.0 |
+| YOLO11n | 1 | 52.1 ms, 19.2 fps | 42.1 ms, 23.8 fps | 38.7 ms, 25.8 fps | 52.1 |
+| YOLO11n | 2 | 50.5 ms, 19.8 fps | 41.0 ms, 24.4 fps | 37.8 ms, 26.5 fps | 50.5 |
+
+**Spread.** RF-DETR varied by about 15 percent between the runs (163 vs 139 ms; 153 vs 127 optimized); YOLO11n and hands by about 5 percent or less. The run with RF-DETR last was faster, so a position or thermal effect is likely, but run 2's reversed order confounds it with the candidate order and this benchmark cannot separate the two. Read against rule (2) as pre-registered (k=1): RF-DETR-Nano does NOT meet 125 ms in either run (170-195 ms), also not with optimize_for_inference (158-185 ms); YOLO11n meets it with a wide margin (50-52 ms). RF-DETR meets the budget only with the detector on every 2nd frame (average 101-114 ms), with up to 195 ms on the slow frames. Earlier benchmark (125-155 ms RF-DETR alone) is consistent with run 2. This session does not apply the rule.
+
+**ONNX (optional item).** Works offline in this venv. `RFDETR.from_checkpoint(...).export(format="onnx", fp16=False)` to the scratchpad (not in the repo, nothing committed), ONNX Runtime CPU, 8 intra-op threads, same 150 frames: median 145.0 ms, p95 151.1, mean 145.1 (a single run, so only roughly comparable to the 139-163 ms PyTorch figures: no clear gain). Agreement with PyTorch on 20 valid images at the floor: 100 boxes each, same box count on all 20 frames, minimum IoU 0.99996, mean 0.999998, class agreement 100 percent, max confidence difference 6.8e-05. The exported model is numerically the same; ONNX does not change the speed picture.
+
+**Not done.** No detector chosen; test split not evaluated or read; no MANIFEST; nothing downloaded or installed; no ONNX file committed; the benchmark is one laptop state (Balanced plan, AC), two runs; the pipeline fps is a model built from the three medians, not a measured end-to-end run.
+
+**Caveats.** (1) Scores are against labels that partly come from the auto-labeler (agreement with the corrected labels, not independent truth). (2) Gold is 88 frames of one performer and one setup, so it says little about other people, lighting or arrangements. (3) Valid also drove early stopping and checkpoint selection of both trainings, so valid numbers are optimistic. (4) Hand data come from the same MediaPipe model the pipeline would use, so the hand-over-container split is a proxy. (5) Scores are near ceiling (every class recall >= 0.966, mAP50 >= 0.996), so rule (1) cannot separate the models; the difference between them is speed (and licence), not accuracy. (6) YOLO11n is AGPL-3.0; if rule (4) applies, the licence decision must be logged.
