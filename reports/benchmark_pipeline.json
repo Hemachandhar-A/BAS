@@ -1,0 +1,46 @@
+{
+ "generated_at": "2026-10-04T01:43:07",
+ "model_stamp": "yolo11n:cb9cd840|hand:fbc2a300|pose:none",
+ "detector": "yolo11n",
+ "what": "sequential decode + detector + hands per frame, no tracking/streaming/speech",
+ "warmup_frames_dropped_per_clip": 10,
+ "frames_per_clip_requested": 200,
+ "machine": {
+  "processor": "AMD64 Family 25 Model 80 Stepping 0, AuthenticAMD",
+  "platform": "Windows-10-10.0.26200-SP0"
+ },
+ "per_clip": {
+  "x015": {
+   "n": 200,
+   "median_ms": 47.336750001704786,
+   "p95_ms": 50.99936999649799,
+   "mean_ms": 47.822124999947846,
+   "implied_fps": 21.125235677649734,
+   "implied_fps_p95": 19.608085356126317
+  },
+  "x016": {
+   "n": 200,
+   "median_ms": 48.14104999968549,
+   "p95_ms": 60.745265001241926,
+   "mean_ms": 49.42079700027534,
+   "implied_fps": 20.772293084727753,
+   "implied_fps_p95": 16.46218845171809
+  },
+  "x017": {
+   "n": 200,
+   "median_ms": 47.88954999821726,
+   "p95_ms": 52.40920499745698,
+   "mean_ms": 47.835937999989255,
+   "implied_fps": 20.881382264757676,
+   "implied_fps_p95": 19.0806176138051
+  }
+ },
+ "all_clips": {
+  "n": 600,
+  "median_ms": 47.738650002429495,
+  "p95_ms": 56.25314499957312,
+  "mean_ms": 48.35962000007081,
+  "implied_fps": 20.947387493134148,
+  "implied_fps_p95": 17.776783858175193
+ }
+}
