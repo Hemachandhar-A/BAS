@@ -251,7 +251,8 @@ def test_cli_end_to_end_on_valid_with_a_fake_detector(tmp_path, monkeypatch):
     code = ev.main(
         ["--model", "rfdetr", "--weights", str(weights), "--dataset-dir", str(root),
          "--split", "valid", "--out", str(report), "--corrections-dir", str(corr),
-         "--dataset-report", str(tmp_path / "none.json"), "--device", "cpu"]
+         "--dataset-report", str(tmp_path / "none.json"), "--device", "cpu",
+         "--acceptance", str(tmp_path / "no_acceptance.yaml")]
     )  # fmt: skip
     assert code == 0
     rep = json.loads(report.read_text())
