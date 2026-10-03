@@ -337,3 +337,22 @@ def test_sha256_sums_lists_only_existing_files(tmp_path):
 
 def test_child_env_allows_hub_downloads_because_the_kernel_has_internet():
     assert R.child_env()["HF_HUB_OFFLINE"] == "0"
+
+
+def test_parse_preflight_reads_the_real_format_report_output():
+    """Guards against drift: the text comes from gpu_preflight.format_report itself."""
+    from training import gpu_preflight as gp
+
+    info = {
+        "device": "cuda", "gpu_name": "Tesla T4", "vram_gb": 14.74, "cuda_available": True,
+        "torch_build": "cuda 12.6", "torch": "2.9.0+cu126", "rfdetr": "1.11.0",
+    }  # fmt: skip
+    timing = gp.summarise_times([1.0, 0.5, 0.5, 0.5, 0.5])
+    est = gp.extrapolate(timing["seconds_per_iteration"], 593, 4, 100)
+    p = R.parse_preflight(gp.format_report("rfdetr", info, timing, est, batch_size=4))
+    assert p["gpu_name"] == "Tesla T4" and p["vram_gb"] == 14.74
+    assert p["torch"] == "2.9.0+cu126" and p["torch_build"] == "CUDA build (cuda 12.6)"
+    assert p["seconds_per_iteration"] == pytest.approx(0.5, abs=0.01)
+    assert p["iterations_per_epoch"] == 149
+    assert p["seconds_per_epoch_est"] == pytest.approx(est["seconds_per_epoch"], abs=0.1)
+    assert p["total_seconds_est"] == pytest.approx(est["total_seconds"], abs=1)
