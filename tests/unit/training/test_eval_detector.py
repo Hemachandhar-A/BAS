@@ -274,7 +274,8 @@ def test_cli_test_split_records_acceptance_sha(tmp_path, monkeypatch):
     code = ev.main(
         ["--model", "rfdetr", "--weights", str(weights), "--dataset-dir", str(root),
          "--split", "test", "--out", str(out), "--acceptance", str(acc),
-         "--corrections-dir", str(tmp_path / "nocorr"), "--device", "cpu"]
+         "--corrections-dir", str(tmp_path / "nocorr"), "--device", "cpu",
+         "--reports-dir", str(tmp_path / "no_reports")]
     )  # fmt: skip
     assert code == 0
     assert (
@@ -401,3 +402,98 @@ def test_report_carries_hand_split_and_confusion_when_hands_are_given():
     assert hs["with_hand_over_container"]["per_class"]["red_box"]["recall"] == pytest.approx(1.0)
     assert rep["subsets"]["gold"]["red_yellow_confusion"]["red_box"]["red_box"] == 2
     assert "by_hand" not in rep["subsets"]["all"]
+
+
+# --- H0: device fallback and the repeat-test guard --------------------------------------------
+
+
+@pytest.mark.parametrize("available,expected", [(True, "cuda"), (False, "cpu")])
+def test_device_auto_falls_back_to_cpu_without_cuda(monkeypatch, available, expected):
+    import torch
+
+    monkeypatch.setattr(torch.cuda, "is_available", lambda: available)
+    assert ev.resolve_device("auto") == expected
+    assert ev.resolve_device("cpu") == "cpu"
+
+
+def test_yolo_loader_uses_cpu_when_cuda_is_absent(tmp_path, monkeypatch):
+    import sys
+    import types
+
+    import torch
+
+    seen = {}
+
+    class FakeYOLO:
+        names = dict(enumerate(CLASSES))
+
+        def __init__(self, path):
+            pass
+
+        def predict(self, bgr, **kw):
+            seen.update(kw)
+            raise RuntimeError("stop")
+
+    monkeypatch.setitem(sys.modules, "ultralytics", types.SimpleNamespace(YOLO=FakeYOLO))
+    monkeypatch.setattr(torch.cuda, "is_available", lambda: False)
+    predict = ev.load_predictor("yolo11n", tmp_path / "w.pt", "auto", CLASSES)
+    with pytest.raises(RuntimeError):
+        predict(np.zeros((8, 8, 3), np.uint8))
+    assert seen["device"] == "cpu"
+
+
+def test_rfdetr_loader_uses_cpu_when_cuda_is_absent(tmp_path, monkeypatch):
+    import sys
+    import types
+
+    import torch
+
+    seen = {}
+
+    class FakeRFDETR:
+        class_names = dict(enumerate(CLASSES))
+
+        @classmethod
+        def from_checkpoint(cls, path, **kw):
+            seen.update(kw)
+            return cls()
+
+    monkeypatch.setitem(sys.modules, "rfdetr", types.SimpleNamespace(RFDETR=FakeRFDETR))
+    monkeypatch.setattr(torch.cuda, "is_available", lambda: False)
+    ev.load_predictor("rfdetr", tmp_path / "w.pth", "auto", CLASSES)
+    assert seen["device"] == "cpu"
+
+
+def test_repeat_test_is_refused_while_a_test_report_exists(tmp_path):
+    assert ev.repeat_test_gate("test", tmp_path, None) is None  # no report yet: fine
+    assert ev.repeat_test_gate("valid", tmp_path, None) is None
+    (tmp_path / "detector_eval_test_yolo11n.json").write_text("{}")
+    assert ev.repeat_test_gate("valid", tmp_path, None) is None  # only test is guarded
+    for reason in (None, "", "   "):
+        with pytest.raises(ev.Refusal) as e:
+            ev.repeat_test_gate("test", tmp_path, reason)
+        assert "--allow-repeat-test" in str(e.value)
+    assert ev.repeat_test_gate("test", tmp_path, " rerun after a bug fix ") == (
+        "rerun after a bug fix"
+    )
+
+
+def test_cli_records_the_repeat_reason_in_the_new_report(tmp_path, monkeypatch, capsys):
+    root = ft.make_synthetic_dataset(tmp_path / "ds", CLASSES, seed=0)
+    monkeypatch.setattr(ev, "load_predictor", lambda *a, **k: lambda bgr: _pred([]))
+    weights = tmp_path / "d.pth"
+    weights.write_bytes(b"w")
+    acc = tmp_path / "acceptance.yaml"
+    acc.write_bytes(b"detector: {}\n")
+    reports = tmp_path / "reports"
+    reports.mkdir()
+    (reports / "detector_eval_test_old.json").write_text("{}")
+    out = reports / "detector_eval_test_new.json"
+    argv = ["--model", "rfdetr", "--weights", str(weights), "--dataset-dir", str(root),
+            "--split", "test", "--out", str(out), "--acceptance", str(acc),
+            "--corrections-dir", str(tmp_path / "nocorr"), "--device", "cpu",
+            "--reports-dir", str(reports)]  # fmt: skip
+    assert ev.main(argv) == 2
+    assert not out.exists() and "--allow-repeat-test" in capsys.readouterr().err
+    assert ev.main([*argv, "--allow-repeat-test", "bug fix rerun"]) == 0
+    assert json.loads(out.read_text())["allow_repeat_test"] == "bug fix rerun"

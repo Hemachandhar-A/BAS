@@ -4,6 +4,7 @@
         --split valid|test --out reports/detector_eval.json
         [--corrections-dir data/corrections] [--acceptance config/acceptance.yaml]
         [--dataset-report reports/dataset.json] [--device auto] [--trust-checkpoint]
+        [--reports-dir reports] [--allow-repeat-test "<reason>"]
 
 Per-class precision and recall at ``detector_conf_floor`` (read from ``PerceptionConfig``, never
 hardcoded) at IoU 0.5, and COCO-style mAP50 and mAP50-95 computed on predictions down to a very
@@ -14,7 +15,9 @@ re-implemented here. **Every metric is reported twice**: on all labelled frames 
 ones checked against ``config/acceptance.yaml``. A subset with no frames reports ``null`` and a
 note, never a zero.
 
-``--split test`` is **refused** unless ``config/acceptance.yaml`` already exists (it must be
+``--split test`` is **refused** a second time while any ``reports/detector_eval_test_*.json``
+exists, unless ``--allow-repeat-test "<reason>"`` is given (the reason goes into the new report).
+It is also **refused** unless ``config/acceptance.yaml`` already exists (it must be
 written before anyone looks at ``test``, AGENTS.md rule 12), and the file's sha256 is then
 recorded in the report. The report also carries ``generated_at``, the weights sha256, the
 dataset stamp and the confidence floor used. Images are read as BGR; they are converted to RGB
@@ -65,6 +68,33 @@ def acceptance_gate(split: str, acceptance_path: Path) -> str | None:
             "The thresholds must be written before anyone looks at test (AGENTS.md rule 12)."
         )
     return None
+
+
+def repeat_test_gate(
+    split: str, reports_dir: Path, allow_repeat_reason: str | None
+) -> str | None:
+    """``test`` is looked at once: refuse when a ``detector_eval_test_*.json`` already exists in
+    ``reports_dir`` unless a non-empty reason is given. Returns the reason to record (or None)."""
+    if split != "test":
+        return None
+    existing = sorted(Path(reports_dir).glob("detector_eval_test_*.json"))
+    reason = (allow_repeat_reason or "").strip()
+    if existing and not reason:
+        raise Refusal(
+            f"refusing --split test: {existing[0].name} already exists in {reports_dir}. "
+            'The test split is evaluated once; pass --allow-repeat-test "<reason>" to repeat '
+            "(the reason is recorded in the new report)."
+        )
+    return reason or None
+
+
+def resolve_device(device: str) -> str:
+    """``auto`` means CUDA when torch sees one, else CPU; an explicit device is kept."""
+    if device != "auto":
+        return device
+    import torch
+
+    return "cuda" if torch.cuda.is_available() else "cpu"
 
 
 def overlay_split(folder: str) -> str:
@@ -379,8 +409,9 @@ def load_predictor(
     if model == "rfdetr":
         from rfdetr import RFDETR
 
-        kw: dict[str, Any] = {} if device == "auto" else {"device": device}
-        m = RFDETR.from_checkpoint(str(weights), trust_checkpoint=trust_checkpoint, **kw)
+        m = RFDETR.from_checkpoint(
+            str(weights), trust_checkpoint=trust_checkpoint, device=resolve_device(device)
+        )
         names = list(getattr(m, "class_names", None) or [])
         if isinstance(getattr(m, "class_names", None), dict):
             names = [v for _, v in sorted(m.class_names.items())]
@@ -394,7 +425,8 @@ def load_predictor(
         names = [n for _, n in sorted(y.names.items())]
         if names != list(classes):
             raise Refusal(f"checkpoint class names {names} != experiment classes {list(classes)}")
-        dev = "cpu" if device == "cpu" else (0 if device in ("auto", "cuda") else device)
+        dev = resolve_device(device)
+        dev = 0 if dev == "cuda" else dev
 
         def predict(bgr: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
             r = y.predict(bgr, conf=MAP_CONF_FLOOR, imgsz=384, device=dev, verbose=False)[0]
@@ -422,12 +454,20 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--acceptance", type=Path, default=Path("config/acceptance.yaml"))
     ap.add_argument("--dataset-report", type=Path, default=Path("reports/dataset.json"))
     ap.add_argument("--config", type=Path, default=Path("config/experiment.json"))
-    ap.add_argument("--device", default="auto")
+    ap.add_argument("--reports-dir", type=Path, default=Path("reports"))
+    ap.add_argument(
+        "--allow-repeat-test",
+        metavar="REASON",
+        default=None,
+        help="repeat --split test although a test report exists; the reason is recorded",
+    )
+    ap.add_argument("--device", default="auto", help="auto = cuda if available else cpu")
     ap.add_argument("--trust-checkpoint", action="store_true")
     args = ap.parse_args(argv)
 
     try:
         acceptance_sha = acceptance_gate(args.split, args.acceptance)
+        repeat_reason = repeat_test_gate(args.split, args.reports_dir, args.allow_repeat_test)
     except Refusal as e:
         print(str(e), file=sys.stderr)
         return 2
@@ -479,6 +519,8 @@ def main(argv: list[str] | None = None) -> int:
         acceptance_sha256=acceptance_sha,
         hands=_hands_cache(),
     )
+    if repeat_reason:
+        report["allow_repeat_test"] = repeat_reason
     acc_text = args.acceptance.read_text(encoding="utf-8") if acceptance_sha else ""
     acc = yaml.safe_load(acc_text) or {}
     det = acc.get("detector", {})

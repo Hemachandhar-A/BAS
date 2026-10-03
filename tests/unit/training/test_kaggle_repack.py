@@ -67,7 +67,7 @@ def _package(tmp_path: Path) -> Path:
 def test_repack_kernel_writes_only_the_kernel_and_bakes_in_the_existing_hashes(tmp_path):
     out = _package(tmp_path)
     before = {p: p.read_bytes() for p in out.rglob("*") if p.is_file() and "kernel" not in p.parts}
-    manifest = K.repack_kernel(out)
+    manifest = K.repack_kernel(out, user="example-owner")
     for p, data in before.items():
         if p.name not in ("package_manifest.json", "COMMANDS.md"):
             assert p.read_bytes() == data, p  # dataset/ and code/ are byte-for-byte unchanged
@@ -84,7 +84,7 @@ def test_repack_kernel_writes_only_the_kernel_and_bakes_in_the_existing_hashes(t
     assert pkg["git_commit"] == "c" * 40 and pkg["dataset_stamp"] == "stamp123"
     assert pkg["weights"] == {n: m["sha256"] for n, m in code["weights"].items()}
     meta = json.loads((out / "kernel" / "kernel-metadata.json").read_text())
-    assert meta["id"] == "hemachandhara/sih26174-train" and meta["code_file"] == "run_training.py"
+    assert meta["id"] == "example-owner/sih26174-train" and meta["code_file"] == "run_training.py"
     assert manifest["files"]["kernel/run_training.py"]["sha256"] == R.sha256_file(
         out / "kernel" / "run_training.py"
     )
@@ -95,8 +95,8 @@ def test_repack_kernel_writes_only_the_kernel_and_bakes_in_the_existing_hashes(t
 
 def test_repack_kernel_is_deterministic(tmp_path):
     out = _package(tmp_path)
-    a = K.repack_kernel(out)["files"]["kernel/run_training.py"]["sha256"]
-    b = K.repack_kernel(out)["files"]["kernel/run_training.py"]["sha256"]
+    a = K.repack_kernel(out, user="example-owner")["files"]["kernel/run_training.py"]["sha256"]
+    b = K.repack_kernel(out, user="example-owner")["files"]["kernel/run_training.py"]["sha256"]
     assert a == b
 
 
@@ -104,16 +104,16 @@ def test_repack_kernel_refuses_a_zip_that_does_not_match_its_manifest(tmp_path):
     out = _package(tmp_path)
     (out / "dataset" / "dataset.zip").write_bytes(b"not the packed zip")
     with pytest.raises(K.PackError, match="dataset.zip"):
-        K.repack_kernel(out)
+        K.repack_kernel(out, user="example-owner")
     out2 = _package(tmp_path / "two")
     (out2 / "code" / "yolo11n.pt").write_bytes(b"changed")
     with pytest.raises(K.PackError, match="yolo11n.pt"):
-        K.repack_kernel(out2)
+        K.repack_kernel(out2, user="example-owner")
 
 
 def test_repack_kernel_needs_an_existing_package(tmp_path):
     with pytest.raises(K.PackError, match="pack first"):
-        K.repack_kernel(tmp_path / "empty")
+        K.repack_kernel(tmp_path / "empty", user="example-owner")
 
 
 def _repo(tmp_path):
@@ -165,16 +165,16 @@ def test_a_removed_file_is_drift_too(tmp_path):
 
 
 def test_commands_use_slash_free_paths_run_from_the_upload_folder():
-    cmds = K.commands("hemachandhara", Path("data/kaggle_upload"))
+    cmds = K.commands("example-owner", Path("data/kaggle_upload"))
     kaggle = [c for _, c in cmds if c.startswith("uv tool run kaggle")]
     assert kaggle, "no kaggle commands"
     for c in kaggle:
         for tok in c.split():
             if tok.startswith("-"):
                 continue
-            assert "/" not in tok or tok.startswith("hemachandhara/"), c  # only the kernel id
+            assert "/" not in tok or tok.startswith("example-owner/"), c  # only the kernel id
     assert "kernels push -p kernel" in " ".join(kaggle)
-    md = K.commands_markdown("hemachandhara", Path("data/kaggle_upload"))
+    md = K.commands_markdown("example-owner", Path("data/kaggle_upload"))
     assert "cd data/kaggle_upload" in md
 
 
@@ -186,8 +186,9 @@ def test_the_version_command_for_the_code_dataset_is_exact():
 
 def test_kernel_only_cli_runs_without_a_repo_check_of_the_dataset(tmp_path, capsys):
     out = _package(tmp_path)
-    assert K.main(["--kernel-only", "--out", str(out)]) == 0
+    assert K.main(["--kernel-only", "--owner", "example-owner", "--out", str(out)]) == 0
     text = capsys.readouterr().out
     assert "kernels push -p kernel" in text and "Nothing was uploaded" in text
     assert 'MODE = "SMOKE"' in (out / "kernel" / "run_training.py").read_text(encoding="utf-8")
-    assert K.main(["--kernel-only", "--out", str(tmp_path / "none")]) == 2
+    none = str(tmp_path / "none")
+    assert K.main(["--kernel-only", "--owner", "example-owner", "--out", none]) == 2

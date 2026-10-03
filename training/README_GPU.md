@@ -16,7 +16,7 @@ Which GPU will be used is **not decided** (a teammate's RTX 4090 or 4070 Ti, or 
 
 | What | From (Lead's laptop) | Size | Why |
 | --- | --- | --- | --- |
-| the repo (clone `develop`, or copy the folder) | `D:\Z_PS2_2026\BAS` | small | the scripts, `config/experiment.json`, `contracts.py`, the lockfile |
+| the repo (clone `develop`, or copy the folder) | `<repo>` | small | the scripts, `config/experiment.json`, `contracts.py`, the lockfile |
 | `data/dataset/` | written by `python -m training.build_dataset` | about 100 MB of JPEGs | the dataset (`train/`, `valid/`, `test/`, each with `_annotations.coco.json`) |
 | `reports/dataset.json` | committed in the repo | small | its `dataset_stamp` goes into the training summary |
 | RF-DETR-Nano pretrained weights `rf-detr-nano.pth` | `%USERPROFILE%\.roboflow\models\` (Linux: `~/.roboflow/models/`) | 366 MB | the COCO-pretrained starting point; MD5-checked by rfdetr |

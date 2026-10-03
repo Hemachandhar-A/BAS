@@ -132,7 +132,7 @@ def test_the_template_has_no_credential_and_imports_only_the_standard_library_at
 
 def test_find_sentinel_works_for_both_mount_layouts(tmp_path):
     a = tmp_path / "input" / "sih26174-dataset"
-    b = tmp_path / "input" / "datasets" / "hemachandhara" / "sih26174-code"
+    b = tmp_path / "input" / "datasets" / "example-owner" / "sih26174-code"
     for d, name in ((a, R.DATASET_SENTINEL), (b, R.CODE_SENTINEL)):
         d.mkdir(parents=True)
         (d / name).write_text("{}")

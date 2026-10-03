@@ -1,6 +1,6 @@
 """Prepare (never upload) the Kaggle package for the detector fine-tune.
 
-  python -m training.kaggle_pack [--out data/kaggle_upload] [--username hemachandhara]
+  python -m training.kaggle_pack [--out data/kaggle_upload] --owner OWNER   (or set KAGGLE_OWNER)
         [--rfdetr-weights PATH] [--yolo-weights PATH] [--allow-dirty]
   python -m training.kaggle_pack --kernel-only [--out data/kaggle_upload]
   python -m training.kaggle_pack --set-mode FULL [--out data/kaggle_upload]
@@ -38,7 +38,7 @@ from pathlib import Path
 
 from training.kaggle.run_training import inject_package, pins_from_lock, set_mode
 
-USERNAME = "hemachandhara"
+OWNER_ENV = "KAGGLE_OWNER"
 DATASET_SLUG = "sih26174-dataset"
 CODE_SLUG = "sih26174-code"
 KERNEL_SLUG = "sih26174-train"
@@ -74,6 +74,14 @@ SECRET_TEXT = re.compile(r'(KGAT_[A-Za-z0-9]+|"key"\s*:\s*"[0-9a-f]{20,}")')
 
 class PackError(Exception):
     """The package cannot be built as asked."""
+
+
+def resolve_owner(arg: str | None, environ: dict | None = None) -> str | None:
+    """The Kaggle owner: the ``--owner`` argument, else ``$KAGGLE_OWNER``; no tracked default."""
+    import os
+
+    env = os.environ if environ is None else environ
+    return (arg or env.get(OWNER_ENV) or "").strip() or None
 
 
 # --- pure helpers -----------------------------------------------------------------------
@@ -236,7 +244,7 @@ def build_package(
     repo: Path,
     out: Path,
     *,
-    user: str = USERNAME,
+    user: str,
     rfdetr_weights: Path,
     yolo_weights: Path,
     allow_dirty: bool = False,
@@ -442,7 +450,7 @@ def functional_drift(paths: list[str]) -> list[str]:
     return [p for p in paths if not p.startswith(NOT_RUN_BY_KERNEL)]
 
 
-def repack_kernel(out: Path, *, user: str = USERNAME) -> dict:
+def repack_kernel(out: Path, *, user: str) -> dict:
     """Regenerate only ``out/kernel`` (the script in SMOKE mode and kernel-metadata.json) from
     the manifests of the datasets already packed in ``out``, and refresh the file listing in
     package_manifest.json. dataset/ and code/ are read, never written; their zips and weights
@@ -528,7 +536,8 @@ def kernel_only(args: argparse.Namespace) -> int:
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--out", type=Path, default=DEFAULT_OUT)
-    ap.add_argument("--username", default=USERNAME)
+    ap.add_argument("--owner", "--username", dest="owner", default=None,
+                    help=f"Kaggle owner (user name); required unless ${OWNER_ENV} is set")
     ap.add_argument("--rfdetr-weights", type=Path, default=None)
     ap.add_argument("--yolo-weights", type=Path, default=None)
     ap.add_argument("--allow-dirty", action="store_true")
@@ -537,6 +546,9 @@ def main(argv: list[str] | None = None) -> int:
     g.add_argument("--kernel-only", action="store_true")
     g.add_argument("--print-commands", action="store_true")
     args = ap.parse_args(argv)
+    args.username = resolve_owner(args.owner)
+    if not args.username and not args.set_mode:
+        ap.error(f"the Kaggle owner is required: pass --owner or set {OWNER_ENV}")
 
     script = args.out / "kernel" / "run_training.py"
     if args.set_mode:
