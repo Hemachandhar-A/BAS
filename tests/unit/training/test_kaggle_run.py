@@ -57,9 +57,9 @@ def test_a_lock_without_a_required_package_is_an_error():
         R.pins_from_lock('[[package]]\nname = "supervision"\nversion = "0.1"\n')
 
 
-def test_constraints_freeze_the_installed_torch_stack_and_pip_never_upgrades():
+def test_constraints_freeze_the_installed_core_stack_and_pip_never_upgrades():
     text = R.constraints_text({"torch": "2.9.0+cu126", "torchvision": "0.24.0", "numpy": "2.0"})
-    assert text.splitlines() == ["torch==2.9.0+cu126", "torchvision==0.24.0"]
+    assert text.splitlines() == ["torch==2.9.0+cu126", "torchvision==0.24.0", "numpy==2.0"]
     cmd = R.pip_install_cmd(["rfdetr[train]==1.11.0"], Path("c.txt"))
     assert "-c" in cmd and "c.txt" in cmd and "rfdetr[train]==1.11.0" in cmd
     for bad in ("--upgrade", "-U", "--force-reinstall", "torch", "torchvision"):
