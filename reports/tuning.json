@@ -1,0 +1,542 @@
+{
+  "generated_at": "2026-10-04T04:29:23.347005Z",
+  "model_stamp": "yolo11n:cb9cd840|hand:fbc2a300|pose:none",
+  "input_stamps": {
+    "experiment_sha256": "aebbe6848db634656a7bab8aea69c191ef5e30e4b4eb4c7c0865792aa92f2d3a",
+    "runtime_yaml_sha256": "d40f7eaf7b9b096e899a95164fe3fb6e18ba12185f2054eca2d82108d0a8adaf",
+    "weights_manifest_sha256": "9ab06adee73c36bb880dda741c3785d70eb2da76d72dc4c0693f17795b4bf496",
+    "val_cache_x015_sha256": "a0b88786a8fa86ff513bf33a24a08edde86bda12ea45602775e4d1c1ed7758cc",
+    "val_cache_x016_sha256": "866b1d19b715892185579c44eb73de38bf568cb6b23837cd6561abe57e6f3251",
+    "val_cache_x017_sha256": "08d25f333f7ba10764829e48af88bae9681a3396395608f1a46a606fc13ab162",
+    "val_cache_x022_sha256": "870e5ce7451622bd287941e887ec92afad768f04e851589580a0cbaa2dcd27e4",
+    "val_cache_x024_sha256": "a2647424f595f0ce7dd4bf012a128f178df6d6d5705b1530c1ef7d4fb6f8b28a",
+    "val_cache_x025_sha256": "b8414d6c8af601b7f6e7afd38a587c00c887413ac2ed41369eddd9506ce7363e",
+    "val_cache_x028_sha256": "477c0bded6f6c00fb155cf4a1c32e2a41594f213bc5f3a226531716911001d4f",
+    "val_cache_x032_sha256": "f9eb7cd1d18bac29ee2943a8f0a919988141f1a5d9f3f58652ff886cdff660a5",
+    "val_cache_x036_sha256": "ba573d39e7406b59c050fca64b04985987614d854b84719156cf3e26030e3cb6",
+    "val_cache_x040_sha256": "9bd370d0f086b71fc3786363a5829f015e3a37cfd0d5517d85adc9baa48f7db6"
+  },
+  "split": "val",
+  "fps": 10.0,
+  "val_runs": [
+    "x015",
+    "x016",
+    "x017",
+    "x022",
+    "x024",
+    "x025",
+    "x028",
+    "x032",
+    "x036",
+    "x040"
+  ],
+  "grid": {
+    "detector_conf_floor": [
+      0.2,
+      0.3,
+      0.4,
+      0.5
+    ],
+    "confirm_conf": [
+      0.5,
+      0.6,
+      0.7
+    ],
+    "hysteresis_frames": [
+      3,
+      4,
+      5,
+      6,
+      8
+    ],
+    "release_frames": [
+      3,
+      5,
+      8
+    ],
+    "baseline_frames": [
+      5,
+      10,
+      15
+    ],
+    "touch_margin_frac": [
+      0.05,
+      0.1,
+      0.25
+    ]
+  },
+  "settings_evaluated": 1620,
+  "selection_rule": "(fixed before any result was seen; do not edit afterwards):\n  1. primary: the number of val runs that MATCH (see harness/metrics.py), more is better;\n  2. secondary: fewer extra plus missing step events summed over the runs;\n  3. tertiary: fewer events flagged uncertain;\n  4. final tie-break: the setting closest to the defaults (sum over parameters of the number of\n     grid steps between its value and the default's; then the parameter tuple, for determinism).\nA setting replaces the defaults ONLY if it has at least ONE more matching val run than the\ndefaults; otherwise the defaults stay.",
+  "default_result": {
+    "params": {
+      "detector_conf_floor": 0.3,
+      "confirm_conf": 0.6,
+      "hysteresis_frames": 5,
+      "release_frames": 5,
+      "baseline_frames": 10,
+      "touch_margin_frac": 0.1
+    },
+    "matches": 8,
+    "extra_plus_missing_events": 2,
+    "uncertain": 4,
+    "distance_to_defaults": 0
+  },
+  "top_20": [
+    {
+      "params": {
+        "detector_conf_floor": 0.3,
+        "confirm_conf": 0.5,
+        "hysteresis_frames": 5,
+        "release_frames": 5,
+        "baseline_frames": 10,
+        "touch_margin_frac": 0.1
+      },
+      "matches": 8,
+      "extra_plus_missing_events": 2,
+      "uncertain": 0,
+      "distance_to_defaults": 1
+    },
+    {
+      "params": {
+        "detector_conf_floor": 0.2,
+        "confirm_conf": 0.5,
+        "hysteresis_frames": 5,
+        "release_frames": 5,
+        "baseline_frames": 10,
+        "touch_margin_frac": 0.1
+      },
+      "matches": 8,
+      "extra_plus_missing_events": 2,
+      "uncertain": 0,
+      "distance_to_defaults": 2
+    },
+    {
+      "params": {
+        "detector_conf_floor": 0.3,
+        "confirm_conf": 0.5,
+        "hysteresis_frames": 4,
+        "release_frames": 5,
+        "baseline_frames": 10,
+        "touch_margin_frac": 0.1
+      },
+      "matches": 8,
+      "extra_plus_missing_events": 2,
+      "uncertain": 0,
+      "distance_to_defaults": 2
+    },
+    {
+      "params": {
+        "detector_conf_floor": 0.3,
+        "confirm_conf": 0.5,
+        "hysteresis_frames": 5,
+        "release_frames": 5,
+        "baseline_frames": 5,
+        "touch_margin_frac": 0.1
+      },
+      "matches": 8,
+      "extra_plus_missing_events": 2,
+      "uncertain": 0,
+      "distance_to_defaults": 2
+    },
+    {
+      "params": {
+        "detector_conf_floor": 0.3,
+        "confirm_conf": 0.5,
+        "hysteresis_frames": 5,
+        "release_frames": 5,
+        "baseline_frames": 15,
+        "touch_margin_frac": 0.1
+      },
+      "matches": 8,
+      "extra_plus_missing_events": 2,
+      "uncertain": 0,
+      "distance_to_defaults": 2
+    },
+    {
+      "params": {
+        "detector_conf_floor": 0.3,
+        "confirm_conf": 0.5,
+        "hysteresis_frames": 5,
+        "release_frames": 8,
+        "baseline_frames": 10,
+        "touch_margin_frac": 0.1
+      },
+      "matches": 8,
+      "extra_plus_missing_events": 2,
+      "uncertain": 0,
+      "distance_to_defaults": 2
+    },
+    {
+      "params": {
+        "detector_conf_floor": 0.3,
+        "confirm_conf": 0.5,
+        "hysteresis_frames": 6,
+        "release_frames": 5,
+        "baseline_frames": 10,
+        "touch_margin_frac": 0.1
+      },
+      "matches": 8,
+      "extra_plus_missing_events": 2,
+      "uncertain": 0,
+      "distance_to_defaults": 2
+    },
+    {
+      "params": {
+        "detector_conf_floor": 0.2,
+        "confirm_conf": 0.5,
+        "hysteresis_frames": 4,
+        "release_frames": 5,
+        "baseline_frames": 10,
+        "touch_margin_frac": 0.1
+      },
+      "matches": 8,
+      "extra_plus_missing_events": 2,
+      "uncertain": 0,
+      "distance_to_defaults": 3
+    },
+    {
+      "params": {
+        "detector_conf_floor": 0.2,
+        "confirm_conf": 0.5,
+        "hysteresis_frames": 5,
+        "release_frames": 3,
+        "baseline_frames": 10,
+        "touch_margin_frac": 0.1
+      },
+      "matches": 8,
+      "extra_plus_missing_events": 2,
+      "uncertain": 0,
+      "distance_to_defaults": 3
+    },
+    {
+      "params": {
+        "detector_conf_floor": 0.2,
+        "confirm_conf": 0.5,
+        "hysteresis_frames": 5,
+        "release_frames": 5,
+        "baseline_frames": 5,
+        "touch_margin_frac": 0.1
+      },
+      "matches": 8,
+      "extra_plus_missing_events": 2,
+      "uncertain": 0,
+      "distance_to_defaults": 3
+    },
+    {
+      "params": {
+        "detector_conf_floor": 0.2,
+        "confirm_conf": 0.5,
+        "hysteresis_frames": 5,
+        "release_frames": 5,
+        "baseline_frames": 15,
+        "touch_margin_frac": 0.1
+      },
+      "matches": 8,
+      "extra_plus_missing_events": 2,
+      "uncertain": 0,
+      "distance_to_defaults": 3
+    },
+    {
+      "params": {
+        "detector_conf_floor": 0.2,
+        "confirm_conf": 0.5,
+        "hysteresis_frames": 5,
+        "release_frames": 8,
+        "baseline_frames": 10,
+        "touch_margin_frac": 0.1
+      },
+      "matches": 8,
+      "extra_plus_missing_events": 2,
+      "uncertain": 0,
+      "distance_to_defaults": 3
+    },
+    {
+      "params": {
+        "detector_conf_floor": 0.2,
+        "confirm_conf": 0.5,
+        "hysteresis_frames": 6,
+        "release_frames": 5,
+        "baseline_frames": 10,
+        "touch_margin_frac": 0.1
+      },
+      "matches": 8,
+      "extra_plus_missing_events": 2,
+      "uncertain": 0,
+      "distance_to_defaults": 3
+    },
+    {
+      "params": {
+        "detector_conf_floor": 0.3,
+        "confirm_conf": 0.5,
+        "hysteresis_frames": 4,
+        "release_frames": 5,
+        "baseline_frames": 5,
+        "touch_margin_frac": 0.1
+      },
+      "matches": 8,
+      "extra_plus_missing_events": 2,
+      "uncertain": 0,
+      "distance_to_defaults": 3
+    },
+    {
+      "params": {
+        "detector_conf_floor": 0.3,
+        "confirm_conf": 0.5,
+        "hysteresis_frames": 4,
+        "release_frames": 5,
+        "baseline_frames": 15,
+        "touch_margin_frac": 0.1
+      },
+      "matches": 8,
+      "extra_plus_missing_events": 2,
+      "uncertain": 0,
+      "distance_to_defaults": 3
+    },
+    {
+      "params": {
+        "detector_conf_floor": 0.3,
+        "confirm_conf": 0.5,
+        "hysteresis_frames": 4,
+        "release_frames": 8,
+        "baseline_frames": 10,
+        "touch_margin_frac": 0.1
+      },
+      "matches": 8,
+      "extra_plus_missing_events": 2,
+      "uncertain": 0,
+      "distance_to_defaults": 3
+    },
+    {
+      "params": {
+        "detector_conf_floor": 0.3,
+        "confirm_conf": 0.5,
+        "hysteresis_frames": 5,
+        "release_frames": 8,
+        "baseline_frames": 5,
+        "touch_margin_frac": 0.1
+      },
+      "matches": 8,
+      "extra_plus_missing_events": 2,
+      "uncertain": 0,
+      "distance_to_defaults": 3
+    },
+    {
+      "params": {
+        "detector_conf_floor": 0.3,
+        "confirm_conf": 0.5,
+        "hysteresis_frames": 5,
+        "release_frames": 8,
+        "baseline_frames": 15,
+        "touch_margin_frac": 0.1
+      },
+      "matches": 8,
+      "extra_plus_missing_events": 2,
+      "uncertain": 0,
+      "distance_to_defaults": 3
+    },
+    {
+      "params": {
+        "detector_conf_floor": 0.3,
+        "confirm_conf": 0.5,
+        "hysteresis_frames": 6,
+        "release_frames": 5,
+        "baseline_frames": 5,
+        "touch_margin_frac": 0.1
+      },
+      "matches": 8,
+      "extra_plus_missing_events": 2,
+      "uncertain": 0,
+      "distance_to_defaults": 3
+    },
+    {
+      "params": {
+        "detector_conf_floor": 0.3,
+        "confirm_conf": 0.5,
+        "hysteresis_frames": 6,
+        "release_frames": 5,
+        "baseline_frames": 15,
+        "touch_margin_frac": 0.1
+      },
+      "matches": 8,
+      "extra_plus_missing_events": 2,
+      "uncertain": 0,
+      "distance_to_defaults": 3
+    }
+  ],
+  "chosen": {
+    "params": {
+      "detector_conf_floor": 0.3,
+      "confirm_conf": 0.6,
+      "hysteresis_frames": 5,
+      "release_frames": 5,
+      "baseline_frames": 10,
+      "touch_margin_frac": 0.1
+    },
+    "matches": 8,
+    "extra_plus_missing_events": 2,
+    "uncertain": 4,
+    "distance_to_defaults": 0,
+    "defaults_retained": true
+  },
+  "sensitivity": {
+    "detector_conf_floor": [
+      {
+        "value": 0.2,
+        "settings": 405,
+        "mean_matches": 6.888888888888889,
+        "min_matches": 5,
+        "best_matches": 8
+      },
+      {
+        "value": 0.3,
+        "settings": 405,
+        "mean_matches": 6.333333333333333,
+        "min_matches": 4,
+        "best_matches": 8
+      },
+      {
+        "value": 0.4,
+        "settings": 405,
+        "mean_matches": 6.111111111111111,
+        "min_matches": 4,
+        "best_matches": 8
+      },
+      {
+        "value": 0.5,
+        "settings": 405,
+        "mean_matches": 5.777777777777778,
+        "min_matches": 4,
+        "best_matches": 8
+      }
+    ],
+    "confirm_conf": [
+      {
+        "value": 0.5,
+        "settings": 540,
+        "mean_matches": 6.277777777777778,
+        "min_matches": 4,
+        "best_matches": 8
+      },
+      {
+        "value": 0.6,
+        "settings": 540,
+        "mean_matches": 6.277777777777778,
+        "min_matches": 4,
+        "best_matches": 8
+      },
+      {
+        "value": 0.7,
+        "settings": 540,
+        "mean_matches": 6.277777777777778,
+        "min_matches": 4,
+        "best_matches": 8
+      }
+    ],
+    "hysteresis_frames": [
+      {
+        "value": 3,
+        "settings": 324,
+        "mean_matches": 6.277777777777778,
+        "min_matches": 4,
+        "best_matches": 8
+      },
+      {
+        "value": 4,
+        "settings": 324,
+        "mean_matches": 6.277777777777778,
+        "min_matches": 4,
+        "best_matches": 8
+      },
+      {
+        "value": 5,
+        "settings": 324,
+        "mean_matches": 6.277777777777778,
+        "min_matches": 4,
+        "best_matches": 8
+      },
+      {
+        "value": 6,
+        "settings": 324,
+        "mean_matches": 6.277777777777778,
+        "min_matches": 4,
+        "best_matches": 8
+      },
+      {
+        "value": 8,
+        "settings": 324,
+        "mean_matches": 6.277777777777778,
+        "min_matches": 5,
+        "best_matches": 7
+      }
+    ],
+    "release_frames": [
+      {
+        "value": 3,
+        "settings": 540,
+        "mean_matches": 5.416666666666667,
+        "min_matches": 4,
+        "best_matches": 8
+      },
+      {
+        "value": 5,
+        "settings": 540,
+        "mean_matches": 6.416666666666667,
+        "min_matches": 5,
+        "best_matches": 8
+      },
+      {
+        "value": 8,
+        "settings": 540,
+        "mean_matches": 7.0,
+        "min_matches": 6,
+        "best_matches": 8
+      }
+    ],
+    "baseline_frames": [
+      {
+        "value": 5,
+        "settings": 540,
+        "mean_matches": 6.277777777777778,
+        "min_matches": 4,
+        "best_matches": 8
+      },
+      {
+        "value": 10,
+        "settings": 540,
+        "mean_matches": 6.277777777777778,
+        "min_matches": 4,
+        "best_matches": 8
+      },
+      {
+        "value": 15,
+        "settings": 540,
+        "mean_matches": 6.277777777777778,
+        "min_matches": 4,
+        "best_matches": 8
+      }
+    ],
+    "touch_margin_frac": [
+      {
+        "value": 0.05,
+        "settings": 540,
+        "mean_matches": 6.25,
+        "min_matches": 5,
+        "best_matches": 7
+      },
+      {
+        "value": 0.1,
+        "settings": 540,
+        "mean_matches": 7.05,
+        "min_matches": 5,
+        "best_matches": 8
+      },
+      {
+        "value": 0.25,
+        "settings": 540,
+        "mean_matches": 5.533333333333333,
+        "min_matches": 4,
+        "best_matches": 7
+      }
+    ]
+  }
+}

@@ -147,6 +147,13 @@ def test_diagnose_never_true_reports_the_missing_box(experiment: ExperimentDefin
     assert "s2" in causes[0] and "item_b" in causes[0] and "no box" in causes[0]
 
 
+def test_diagnose_a_repeat_that_merged_into_one_hold(experiment: ExperimentDefinition) -> None:
+    frames = _run((), *[("item_a",)] * 9)  # performed twice, but item_a never leaves
+    obs = observe(experiment, frames, CFG, RuntimeConfig())
+    causes = diagnose(experiment, frames, CFG, ["s1", "s1"], obs)
+    assert len(causes) == 1 and "never went false" in causes[0] and "merged" in causes[0]
+
+
 # --- dynamic experiment lint -----------------------------------------------------------------
 
 

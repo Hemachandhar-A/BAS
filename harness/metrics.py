@@ -180,9 +180,18 @@ def _why_not_fired(
     truth: list[bool],
     frames: list[PerceptionFrame],
     config: PerceptionConfig,
+    fired_before: int = 0,
 ) -> str:
     sid = step.step_id
     n = len(frames)
+    if fired_before:
+        # performed more often than it fired: the later performances never re-armed the step
+        return (
+            f"{sid}: fired {fired_before}x but performed more often: the rule never went false "
+            f"for release_frames={config.release_frames} consecutive frames after the firing "
+            f"(true for up to {_max_streak(truth)} consecutive frames, so the repeat merged "
+            "into one long hold)"
+        )
     if not any(truth):
         missing = []
         for label in _labels(step):
@@ -240,7 +249,7 @@ def diagnose(
     causes: list[str] = []
     for sid in dict.fromkeys(performed):
         if performed_c[sid] > fired_c[sid]:
-            causes.append(_why_not_fired(by_id[sid], truths[sid], frames, config))
+            causes.append(_why_not_fired(by_id[sid], truths[sid], frames, config, fired_c[sid]))
     for sid, n in fired_c.items():
         extra = n - performed_c.get(sid, 0)
         if extra > 0:

@@ -128,6 +128,24 @@ def test_replay_from_cache_refuses_a_different_stamp_or_fps(
         )
 
 
+def test_cli_from_cache_refuses_a_mismatched_cache(
+    experiment: ExperimentDefinition, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    cache_dir = tmp_path / "cache"  # header: fps 15.0, stamp "fake:stamp"; config: fps 10
+    _write_cache(cache_dir, "r1", experiment.experiment_id, [PerceptionFrame(frame_id=0, t=0.0)])
+    rc = main(
+        ["--from-cache", "r1", "--cache-dir", str(cache_dir), "--experiment", str(FIXTURE_PATH)]
+    )
+    assert rc == 2
+    assert "model_stamp" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize("split", ["test", "train", "all"])
+def test_cli_tune_refuses_any_split_but_val(split: str, capsys: pytest.CaptureFixture[str]) -> None:
+    assert main(["--tune", "--split", split]) == 2
+    assert "val split only" in capsys.readouterr().err
+
+
 # ---------------------------------------------------------------------------
 # --video mode (perception.pipeline.load_pipeline, injected here)
 # ---------------------------------------------------------------------------
