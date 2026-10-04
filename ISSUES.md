@@ -1651,3 +1651,30 @@ Extra/missing events and uncertain flags over the 10 runs at the defaults: 2 mis
 **START-excluded count.** A count that removes the step `start_pressed` is reported for information only. It never changes a verdict.
 
 Signed: P2 owner and P1 owner, both by the Lead acting as both.
+
+## 2026-10-03 P2.7 (S-H2) - test replay
+
+**What was run (written 2026-10-04).** The decision record (commit 40881b9, 2026-10-04T11:13:35+05:30) was pushed before any test cache was opened. Then `python scripts/replay.py --from-cache all --split test` ran **once** (2026-10-04T11:25:46+05:30) on the 10 test caches (stamp `yolo11n:cb9cd840|hand:fbc2a300|pose:none`, fps 10, checked against the expected stamp and `target_fps`), with `config/perception.yaml` (the defaults) and `config/runtime.yaml`. Output: `reports/replay_test.json` (acceptance values and sha256 `477b2be4...30db5` read from `config/acceptance.yaml`, which is unchanged since c89bee8). Code: `harness/heldout.py` (new), `harness/tune.py` (`load_runs` gained an `allowed` argument whose default still refuses test), `harness/replay.py` (`--split test`, `--allow-repeat-test REASON`, `--report`). Guard: a second `--split test` run is refused while `reports/replay_test.json` exists unless `--allow-repeat-test "<reason>"` is given (the reason is recorded in the new report). The START-excluded verdict (`start_excluded_verdict`) removes `start_pressed` from the expected and observed deviations, from `performed_steps` and from the observed firings, then applies the same MATCH rule; it is for information only.
+
+**Result against `exact_deviation_match: true`, `max_mismatched_runs: 0`: FAILED.**
+
+| run | type | performed | expected deviations | observed deviations | strict | START-excl. | extra/missing/unc | POS | cause (from the data) |
+|---|---|---|---|---|---|---|---|---|---|
+| x002 | correct | all 7 | none | none | MATCH | match | 0/0/0 | 1.000 | |
+| x009 | correct | all 7 | none | none | MATCH | match | 0/0/0 | 1.000 | |
+| x013 | correct | all 7 | none | none | MATCH | match | 0/0/0 | 1.000 | |
+| x014 | correct | all 7 | none | repeat start_pressed, repeat start_pressed | **MISMATCH** | match | 2/0/2 | 0.714 | extra press: start_pressed fired 3x, performed 1x, at t=7.9, 14.7, 20.5 s |
+| x035 | idle | none | none | none | MATCH | match | 0/0/0 | 0.000 | |
+| x038 | repeat | red_out red_in_tray start_pressed red_stowed start_pressed | omission yellow_out+yellow_in_tray; repeat start_pressed | the same | MATCH | match | 0/0/0 | 0.571 | |
+| x041 | swap | red_out red_in_tray red_stowed yellow_out yellow_in_tray yellow_stowed | omission yellow_out+yellow_in_tray+start_pressed; out_of_order yellow_out; out_of_order yellow_in_tray | the same | MATCH | match | 0/0/0 | 0.571 | |
+| x042 | skip | red_out red_in_tray start_pressed | omission yellow_out+yellow_in_tray | the same | MATCH | match | 0/0/0 | 0.429 | |
+| x045 | skip | yellow_out yellow_in_tray start_pressed yellow_stowed | omission red_out+red_in_tray; omission red_stowed | omission red_out+red_in_tray; omission start_pressed+red_stowed | **MISMATCH** | match | 0/1/0 | 0.429 (performed 0.571) | missed START press: the fingertip was in the grown button box for at most 4 consecutive frames, shorter than hysteresis 5 |
+| x046 | swap | yellow_out yellow_in_tray red_out red_in_tray start_pressed yellow_stowed red_stowed | omission red_out+red_in_tray; out_of_order red_out; out_of_order red_in_tray; omission red_stowed | the same | MATCH | match | 0/0/0 | 0.286 | |
+
+**Aggregate.** 10 runs; strict matches **8**, strict mismatches **2** (x014, x045); START-excluded matches 10 (information only); `max_mismatched_runs` 0; **verdict FAIL**. Both mismatches are the documented START-press limitation: one extra press (x014, a correct run, two extra START firings) and one missed press shorter than the hysteresis (x045). No mismatch is caused by a missing container box or a baseline latch. The result equals the val result (8 of 10). `check.py` full: 1,137 passed; `--status` all GREEN (F1 to F14).
+
+**Consequence.** The formal G4 gate stays open with the START-press limitation documented; the acceptance file is not amended, as decided above.
+
+**Caveats.** One performer, one camera setup, no gloves; 10 test runs, so 8 of 10 has a wide uncertainty; the START-press limitation (fingertip rule); the detector acceptance (recall and mAP50 on gold test frames) was evaluated separately and is not part of this replay; the START-excluded count is information only and does not change the verdict.
+
+**NOT done.** No tuning and no setting, threshold or rule changed; no second replay; no amendment of `config/acceptance.yaml`; no PR opened or merged.
