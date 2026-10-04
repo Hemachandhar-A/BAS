@@ -885,9 +885,9 @@ class LiveSystem:
             time.sleep(poll_s)
 
     def shutdown(self) -> None:
-        """Every step runs even if an earlier one fails: the server stops, a running run is
-        finished (``run_completed`` aborted, recorder file closed), the threads join, the source
-        closes, the TTS process stops. Idempotent."""
+        """Every step runs even if an earlier one fails: the server stops, the threads join (the
+        recorder file closes, the source closes), a running run is finished (``run_completed``
+        aborted), the TTS process stops. Idempotent."""
         if self._stopped:
             return
         self._stopped = True
@@ -904,14 +904,17 @@ class LiveSystem:
                 self.server.server_close()
             except Exception:
                 logger.warning("live: error stopping the HTTP server", exc_info=True)
-        try:
-            self.loop.reset_run(self.run_clock())
-        except Exception:
-            logger.warning("live: reset_run failed during shutdown", exc_info=True)
+        # The threads stop first: with the inference thread still running, a frame could be
+        # logged after run_completed. The newest frame stays in the store, so run_clock() still
+        # gives the aborted run's end time.
         try:
             self.loop.stop()
         except Exception:
             logger.warning("live: loop.stop failed", exc_info=True)
+        try:
+            self.loop.reset_run(self.run_clock())
+        except Exception:
+            logger.warning("live: reset_run failed during shutdown", exc_info=True)
         try:
             self.speaker.close()
         except Exception:
