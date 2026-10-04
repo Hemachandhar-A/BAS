@@ -55,3 +55,63 @@ def test_cli_routes_split_test_to_the_guard(tmp_path: Path) -> None:
     assert main(["--from-cache", "x002", "--split", "test", "--report", str(report)]) == 2
     # the tuner still refuses the test split
     assert main(["--tune", "--split", "test"]) == 2
+
+
+# --- START-excluded metric (reporting only) -------------------------------------------------
+
+from contracts import ExpectedDeviation  # noqa: E402
+from harness.heldout import start_excluded_verdict  # noqa: E402
+from harness.metrics import Observation, verdict  # noqa: E402
+
+
+def _exp(kind: str, *ids: str) -> ExpectedDeviation:
+    return ExpectedDeviation(deviation_type=kind, step_ids=list(ids))  # type: ignore[arg-type]
+
+
+def test_start_excluded_forgives_a_missed_start_press() -> None:
+    performed = ["start_pressed", "red_out"]
+    obs = Observation(fired=["red_out"], fired_frame_index=[5], fired_t=[0.5], deviations=[])
+    assert not verdict([], performed, obs).match
+    assert start_excluded_verdict([], performed, obs).match
+
+
+def test_start_excluded_forgives_an_extra_start_deviation_and_firing() -> None:
+    obs = Observation(
+        fired=["start_pressed", "start_pressed"],
+        fired_frame_index=[1, 9],
+        fired_t=[0.1, 0.9],
+        deviations=[("repeat", ("start_pressed",))],
+    )
+    performed = ["start_pressed"]
+    assert not verdict([], performed, obs).match
+    assert start_excluded_verdict([], performed, obs).match
+
+
+def test_start_excluded_removes_start_from_step_ids_and_drops_empty_deviations() -> None:
+    expected = [_exp("omission", "start_pressed", "red_stowed"), _exp("repeat", "start_pressed")]
+    obs = Observation(deviations=[("omission", ("red_stowed",))])
+    assert start_excluded_verdict(expected, [], obs).match
+
+
+def test_start_excluded_still_fails_on_other_steps() -> None:
+    obs = Observation(
+        fired=["red_out"], fired_frame_index=[1], fired_t=[0.1], deviations=[]
+    )
+    v = start_excluded_verdict([_exp("omission", "red_in_tray")], ["red_out"], obs)
+    assert not v.match
+
+
+def test_start_excluded_never_mutates_its_inputs_and_other_steps_pass_through() -> None:
+    expected = [_exp("omission", "start_pressed", "red_stowed")]
+    obs = Observation(
+        fired=["start_pressed", "red_out"],
+        fired_frame_index=[1, 2],
+        fired_t=[0.1, 0.2],
+        deviations=[("omission", ("start_pressed", "red_stowed"))],
+        uncertain=3,
+    )
+    performed = ["red_out"]
+    v = start_excluded_verdict(expected, performed, obs)
+    assert v.match and v.uncertain == 3
+    assert expected[0].step_ids == ["start_pressed", "red_stowed"]
+    assert obs.fired == ["start_pressed", "red_out"] and performed == ["red_out"]

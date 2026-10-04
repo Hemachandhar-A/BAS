@@ -12,7 +12,13 @@ from __future__ import annotations
 
 import argparse
 import sys
+from dataclasses import replace
 from pathlib import Path
+
+from contracts import ExpectedDeviation
+from harness.metrics import Observation, RunVerdict, verdict
+
+START_STEP = "start_pressed"
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -42,3 +48,34 @@ def run_test_split(args: argparse.Namespace) -> int:
         print(f"error: {exc}", file=sys.stderr)
         return 2
     return 0
+
+
+def start_excluded_verdict(
+    expected: list[ExpectedDeviation],
+    performed: list[str],
+    obs: Observation,
+    step_id: str = START_STEP,
+) -> RunVerdict:
+    """The same MATCH rule (``metrics.verdict``) with ``step_id`` removed from every step_ids
+    list of the expected and observed deviations (a deviation left empty is dropped), from
+    ``performed_steps`` and from the observed firings. Reporting only: it never replaces the
+    strict verdict. Inputs are not modified."""
+    want = []
+    for d in expected:
+        ids = [s for s in d.step_ids if s != step_id]
+        if ids:
+            want.append(ExpectedDeviation(deviation_type=d.deviation_type, step_ids=ids))
+    keep = [i for i, s in enumerate(obs.fired) if s != step_id]
+    devs = []
+    for kind, ids in obs.deviations:
+        left = tuple(s for s in ids if s != step_id)
+        if left:
+            devs.append((kind, left))
+    stripped = replace(
+        obs,
+        fired=[obs.fired[i] for i in keep],
+        fired_frame_index=[obs.fired_frame_index[i] for i in keep],
+        fired_t=[obs.fired_t[i] for i in keep],
+        deviations=devs,
+    )
+    return verdict(want, [s for s in performed if s != step_id], stripped)
