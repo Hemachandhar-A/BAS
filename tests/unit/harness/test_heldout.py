@@ -115,3 +115,72 @@ def test_start_excluded_never_mutates_its_inputs_and_other_steps_pass_through() 
     assert v.match and v.uncertain == 3
     assert expected[0].step_ids == ["start_pressed", "red_stowed"]
     assert obs.fired == ["start_pressed", "red_out"] and performed == ["red_out"]
+
+
+# --- report assembly ------------------------------------------------------------------------
+
+from contracts import ExperimentDefinition, PerceptionConfig, RuntimeConfig  # noqa: E402
+from harness.heldout import aggregate, cause_category, replay_pos, run_row  # noqa: E402
+from harness.tune import RunData  # noqa: E402
+
+
+@pytest.mark.parametrize(
+    ("line", "category"),
+    [
+        (
+            "start_pressed: true for at most 3 consecutive frame(s), shorter than "
+            "hysteresis_frames=5 (action too short)",
+            "missed START press",
+        ),
+        (
+            "start_pressed: missed press: no fingertip inside the grown start_button box",
+            "missed START press",
+        ),
+        ("start_pressed: extra press: fired 2x, performed 1x, at t=1.0", "extra press"),
+        (
+            "start_pressed: fired 1x but performed more often: (the repeat merged into one "
+            "long hold)",
+            "merged presses",
+        ),
+        ("red_out: rule never true; no box for tray (missing box)", "missing container box"),
+        ("red_stowed: baseline latch: true in the baseline window", "baseline latch"),
+        ("fired order [] differs from performed order []", "other"),
+    ],
+)
+def test_cause_category_maps_diagnose_lines_to_the_fixed_vocabulary(
+    line: str, category: str
+) -> None:
+    assert cause_category(line) == category
+
+
+def test_aggregate_counts_and_verdict() -> None:
+    rows = [
+        {"match": True, "start_excluded_match": True},
+        {"match": False, "start_excluded_match": True},
+        {"match": False, "start_excluded_match": False},
+    ]
+    agg = aggregate(rows, max_mismatched_runs=0)
+    assert agg["runs"] == 3 and agg["strict_matches"] == 1 and agg["strict_mismatches"] == 2
+    assert agg["start_excluded_matches"] == 2 and agg["verdict"] == "FAIL"
+    assert aggregate(rows, max_mismatched_runs=2)["verdict"] == "PASS"
+    assert aggregate(rows[:1], max_mismatched_runs=0)["verdict"] == "PASS"
+
+
+def test_the_start_excluded_count_never_changes_the_verdict() -> None:
+    rows = [{"match": False, "start_excluded_match": True}]
+    assert aggregate(rows, max_mismatched_runs=0)["verdict"] == "FAIL"
+
+
+def test_replay_pos_of_the_canonical_sequence_is_one_and_of_an_empty_run_is_zero() -> None:
+    exp = ExperimentDefinition.from_json("config/experiment.json")
+    rc = RuntimeConfig()
+    assert replay_pos(exp, rc, exp.step_ids, 0.0) == pytest.approx(1.0)
+    assert replay_pos(exp, rc, [], 0.0) == pytest.approx(0.0)
+
+
+def test_run_row_on_an_empty_idle_run_matches() -> None:
+    exp = ExperimentDefinition.from_json("config/experiment.json")
+    run = RunData("t1", "idle", [], [], [], "0" * 64)
+    row = run_row(exp, run, PerceptionConfig(), RuntimeConfig())
+    assert row["match"] is True and row["start_excluded_match"] is True
+    assert row["cause"] == "" and row["pos"] == 0.0 and row["uncertain"] == 0

@@ -110,13 +110,15 @@ def load_runs(
     cache_dir: Path | str = "data/cache",
     expected_stamp: str,
     expected_fps: float,
+    allowed: tuple[str, ...] = READABLE_SPLITS,
 ) -> list[RunData]:
     """Scripts and caches of the runs of ONE split (train or val), caches validated against the
-    expected stamp and fps. A run of any other split is never touched."""
+    expected stamp and fps. A run of any other split is never touched. ``allowed`` is widened
+    only by ``harness/heldout.py`` for the one-shot test replay."""
     from perception.cache import cache_path, read_cache
 
-    if split not in READABLE_SPLITS:
-        raise SplitRefused(f"split {split!r} is refused here; readable: {READABLE_SPLITS}")
+    if split not in allowed:
+        raise SplitRefused(f"split {split!r} is refused here; readable: {allowed}")
     with Path(manifest_csv).open(newline="", encoding="utf-8") as f:
         rows = [r for r in csv.DictReader(f) if r["split"] == split]
     out: list[RunData] = []
