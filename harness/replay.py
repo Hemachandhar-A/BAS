@@ -318,14 +318,32 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--split",
         default="val",
-        help="--tune: must be val (any other split is refused)",
+        help="--tune: must be val (any other split is refused); "
+        "--from-cache all --split test: the one-shot test replay (harness/heldout.py)",
     )
+    parser.add_argument(
+        "--allow-repeat-test",
+        metavar="REASON",
+        default=None,
+        help="--split test: allow a second test replay although the report exists; "
+        "the reason is recorded in the new report",
+    )
+    parser.add_argument("--report", default=ROOT / "reports" / "replay_test.json", type=Path)
+    parser.add_argument("--acceptance", default=ROOT / "config" / "acceptance.yaml", type=Path)
     args = parser.parse_args(argv)
 
     if args.tune:
         from harness.tune import tune_main
 
         return tune_main(args)
+
+    if args.split == "test":
+        from harness.heldout import run_test_split
+
+        if args.from_cache != "all":
+            print("error: --split test needs --from-cache all", file=sys.stderr)
+            return 2
+        return run_test_split(args)
 
     experiment = ExperimentDefinition.from_json(args.experiment)
     runtime_config = load_runtime_config(args.runtime_config)
