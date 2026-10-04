@@ -1,0 +1,591 @@
+{
+  "generated_at": "2026-10-04T05:55:47.756916Z",
+  "model_stamp": "yolo11n:cb9cd840|hand:fbc2a300|pose:none",
+  "input_stamps": {
+    "experiment_sha256": "aebbe6848db634656a7bab8aea69c191ef5e30e4b4eb4c7c0865792aa92f2d3a",
+    "runtime_yaml_sha256": "d40f7eaf7b9b096e899a95164fe3fb6e18ba12185f2054eca2d82108d0a8adaf",
+    "perception_yaml_sha256": "6eabd21dd180ef6a86accec2140b997e70abd138cc0a282e000b87eece36b220",
+    "weights_manifest_sha256": "9ab06adee73c36bb880dda741c3785d70eb2da76d72dc4c0693f17795b4bf496",
+    "acceptance_yaml_sha256": "477b2be4a016c6bf3dd0c5e834dec391a155131fce1c851d777c0259eff30db5",
+    "test_cache_x002_sha256": "c8e0bd474edee361d4974fe97bcb6dd9e676408a3262827099ada8c10e4b3a1f",
+    "test_cache_x009_sha256": "77b73d5e303d3b625841d0bed34c31b49aa766bc6f65d6d04da479df08c7b614",
+    "test_cache_x013_sha256": "47be1f40b47a2a7665bf502e534ea09d1f8c6facc6b65b0c08e144bcf96abf4f",
+    "test_cache_x014_sha256": "ebe587cfd483cf7816ec1cfeaab173754de1fa56e8d625213cc1d9b559daa288",
+    "test_cache_x035_sha256": "953b1f3c9c72c580e7fe3599192782abfbecd93c7404e93742e4ca0412f7cf11",
+    "test_cache_x038_sha256": "515a60185a120cfb7b6ca13832b005c750cc4f8d78664009cd32b0310f01e376",
+    "test_cache_x041_sha256": "b4bf0486e26d4077084a2519ca500b490f4e53ec7a5a38fdbad1fd0fe5ac5098",
+    "test_cache_x042_sha256": "44fb13ceb0db34c1ea56883b73bf6fe11eea13d90f50fa04c42dc368c76eaa72",
+    "test_cache_x045_sha256": "78e033fd000115c99d2e355734772989de5329852546b06e82553c7a83705b72",
+    "test_cache_x046_sha256": "45de9101b197fdb6f04d2b047e4189ab730e3a0c898396197e9a4fe5d8a80ecf"
+  },
+  "split": "test",
+  "fps": 10.0,
+  "config_used": {
+    "perception": {
+      "detector_conf_floor": 0.3,
+      "confirm_conf": 0.6,
+      "hysteresis_frames": 5,
+      "release_frames": 5,
+      "baseline_frames": 10,
+      "touch_margin_frac": 0.1
+    },
+    "runtime": {
+      "source": "0",
+      "target_fps": 10.0,
+      "stream_fps": 10.0,
+      "jpeg_quality": 80,
+      "narrate_next_step": true,
+      "alert_on_repeat": true,
+      "alert_cooldown_s": 5.0,
+      "feed_timeout_s": 3.0,
+      "enable_pose": false,
+      "host": "127.0.0.1",
+      "port": 8443,
+      "allowed_client_ips": [
+        "127.0.0.1"
+      ],
+      "tls_cert": null,
+      "tls_key": null,
+      "video_dir": "runs_out/video",
+      "log_dir": "runs_out/logs"
+    }
+  },
+  "acceptance": {
+    "replay": {
+      "exact_deviation_match": true,
+      "max_mismatched_runs": 0
+    },
+    "sha256": "477b2be4a016c6bf3dd0c5e834dec391a155131fce1c851d777c0259eff30db5"
+  },
+  "allow_repeat_test_reason": null,
+  "runs": [
+    {
+      "run_id": "x002",
+      "script_type": "correct",
+      "frames": 189,
+      "performed_steps": [
+        "red_out",
+        "red_in_tray",
+        "yellow_out",
+        "yellow_in_tray",
+        "start_pressed",
+        "red_stowed",
+        "yellow_stowed"
+      ],
+      "observed_fired_steps": [
+        "red_out",
+        "red_in_tray",
+        "yellow_out",
+        "yellow_in_tray",
+        "start_pressed",
+        "red_stowed",
+        "yellow_stowed"
+      ],
+      "expected_deviations": [],
+      "observed_deviations": [],
+      "match": true,
+      "start_excluded_match": true,
+      "extra_events": 0,
+      "missing_events": 0,
+      "extra_deviations": 0,
+      "missing_deviations": 0,
+      "uncertain": 0,
+      "pos": 1.0,
+      "pos_of_performed_steps": 1.0,
+      "cause": "",
+      "cause_categories": [],
+      "cache_sha256": "c8e0bd474edee361d4974fe97bcb6dd9e676408a3262827099ada8c10e4b3a1f"
+    },
+    {
+      "run_id": "x009",
+      "script_type": "correct",
+      "frames": 211,
+      "performed_steps": [
+        "red_out",
+        "red_in_tray",
+        "yellow_out",
+        "yellow_in_tray",
+        "start_pressed",
+        "red_stowed",
+        "yellow_stowed"
+      ],
+      "observed_fired_steps": [
+        "red_out",
+        "red_in_tray",
+        "yellow_out",
+        "yellow_in_tray",
+        "start_pressed",
+        "red_stowed",
+        "yellow_stowed"
+      ],
+      "expected_deviations": [],
+      "observed_deviations": [],
+      "match": true,
+      "start_excluded_match": true,
+      "extra_events": 0,
+      "missing_events": 0,
+      "extra_deviations": 0,
+      "missing_deviations": 0,
+      "uncertain": 0,
+      "pos": 1.0,
+      "pos_of_performed_steps": 1.0,
+      "cause": "",
+      "cause_categories": [],
+      "cache_sha256": "77b73d5e303d3b625841d0bed34c31b49aa766bc6f65d6d04da479df08c7b614"
+    },
+    {
+      "run_id": "x013",
+      "script_type": "correct",
+      "frames": 198,
+      "performed_steps": [
+        "red_out",
+        "red_in_tray",
+        "yellow_out",
+        "yellow_in_tray",
+        "start_pressed",
+        "red_stowed",
+        "yellow_stowed"
+      ],
+      "observed_fired_steps": [
+        "red_out",
+        "red_in_tray",
+        "yellow_out",
+        "yellow_in_tray",
+        "start_pressed",
+        "red_stowed",
+        "yellow_stowed"
+      ],
+      "expected_deviations": [],
+      "observed_deviations": [],
+      "match": true,
+      "start_excluded_match": true,
+      "extra_events": 0,
+      "missing_events": 0,
+      "extra_deviations": 0,
+      "missing_deviations": 0,
+      "uncertain": 0,
+      "pos": 1.0,
+      "pos_of_performed_steps": 1.0,
+      "cause": "",
+      "cause_categories": [],
+      "cache_sha256": "47be1f40b47a2a7665bf502e534ea09d1f8c6facc6b65b0c08e144bcf96abf4f"
+    },
+    {
+      "run_id": "x014",
+      "script_type": "correct",
+      "frames": 257,
+      "performed_steps": [
+        "red_out",
+        "red_in_tray",
+        "yellow_out",
+        "yellow_in_tray",
+        "start_pressed",
+        "red_stowed",
+        "yellow_stowed"
+      ],
+      "observed_fired_steps": [
+        "red_out",
+        "red_in_tray",
+        "yellow_out",
+        "yellow_in_tray",
+        "start_pressed",
+        "start_pressed",
+        "red_stowed",
+        "start_pressed",
+        "yellow_stowed"
+      ],
+      "expected_deviations": [],
+      "observed_deviations": [
+        {
+          "deviation_type": "repeat",
+          "step_ids": [
+            "start_pressed"
+          ]
+        },
+        {
+          "deviation_type": "repeat",
+          "step_ids": [
+            "start_pressed"
+          ]
+        }
+      ],
+      "match": false,
+      "start_excluded_match": true,
+      "extra_events": 2,
+      "missing_events": 0,
+      "extra_deviations": 2,
+      "missing_deviations": 0,
+      "uncertain": 2,
+      "pos": 0.7142857142857143,
+      "pos_of_performed_steps": 1.0,
+      "cause": "start_pressed: extra press: fired 3x, performed 1x, at t=7.9, 14.7, 20.5",
+      "cause_categories": [
+        "extra press"
+      ],
+      "cache_sha256": "ebe587cfd483cf7816ec1cfeaab173754de1fa56e8d625213cc1d9b559daa288"
+    },
+    {
+      "run_id": "x035",
+      "script_type": "idle",
+      "frames": 145,
+      "performed_steps": [],
+      "observed_fired_steps": [],
+      "expected_deviations": [],
+      "observed_deviations": [],
+      "match": true,
+      "start_excluded_match": true,
+      "extra_events": 0,
+      "missing_events": 0,
+      "extra_deviations": 0,
+      "missing_deviations": 0,
+      "uncertain": 0,
+      "pos": 0.0,
+      "pos_of_performed_steps": 0.0,
+      "cause": "",
+      "cause_categories": [],
+      "cache_sha256": "953b1f3c9c72c580e7fe3599192782abfbecd93c7404e93742e4ca0412f7cf11"
+    },
+    {
+      "run_id": "x038",
+      "script_type": "repeat",
+      "frames": 165,
+      "performed_steps": [
+        "red_out",
+        "red_in_tray",
+        "start_pressed",
+        "red_stowed",
+        "start_pressed"
+      ],
+      "observed_fired_steps": [
+        "red_out",
+        "red_in_tray",
+        "start_pressed",
+        "red_stowed",
+        "start_pressed"
+      ],
+      "expected_deviations": [
+        {
+          "deviation_type": "omission",
+          "step_ids": [
+            "yellow_out",
+            "yellow_in_tray"
+          ]
+        },
+        {
+          "deviation_type": "repeat",
+          "step_ids": [
+            "start_pressed"
+          ]
+        }
+      ],
+      "observed_deviations": [
+        {
+          "deviation_type": "omission",
+          "step_ids": [
+            "yellow_out",
+            "yellow_in_tray"
+          ]
+        },
+        {
+          "deviation_type": "repeat",
+          "step_ids": [
+            "start_pressed"
+          ]
+        }
+      ],
+      "match": true,
+      "start_excluded_match": true,
+      "extra_events": 0,
+      "missing_events": 0,
+      "extra_deviations": 0,
+      "missing_deviations": 0,
+      "uncertain": 0,
+      "pos": 0.5714285714285714,
+      "pos_of_performed_steps": 0.5714285714285714,
+      "cause": "",
+      "cause_categories": [],
+      "cache_sha256": "515a60185a120cfb7b6ca13832b005c750cc4f8d78664009cd32b0310f01e376"
+    },
+    {
+      "run_id": "x041",
+      "script_type": "swap",
+      "frames": 155,
+      "performed_steps": [
+        "red_out",
+        "red_in_tray",
+        "red_stowed",
+        "yellow_out",
+        "yellow_in_tray",
+        "yellow_stowed"
+      ],
+      "observed_fired_steps": [
+        "red_out",
+        "red_in_tray",
+        "red_stowed",
+        "yellow_out",
+        "yellow_in_tray",
+        "yellow_stowed"
+      ],
+      "expected_deviations": [
+        {
+          "deviation_type": "omission",
+          "step_ids": [
+            "yellow_out",
+            "yellow_in_tray",
+            "start_pressed"
+          ]
+        },
+        {
+          "deviation_type": "out_of_order",
+          "step_ids": [
+            "yellow_out"
+          ]
+        },
+        {
+          "deviation_type": "out_of_order",
+          "step_ids": [
+            "yellow_in_tray"
+          ]
+        }
+      ],
+      "observed_deviations": [
+        {
+          "deviation_type": "omission",
+          "step_ids": [
+            "yellow_out",
+            "yellow_in_tray",
+            "start_pressed"
+          ]
+        },
+        {
+          "deviation_type": "out_of_order",
+          "step_ids": [
+            "yellow_out"
+          ]
+        },
+        {
+          "deviation_type": "out_of_order",
+          "step_ids": [
+            "yellow_in_tray"
+          ]
+        }
+      ],
+      "match": true,
+      "start_excluded_match": true,
+      "extra_events": 0,
+      "missing_events": 0,
+      "extra_deviations": 0,
+      "missing_deviations": 0,
+      "uncertain": 0,
+      "pos": 0.5714285714285714,
+      "pos_of_performed_steps": 0.5714285714285714,
+      "cause": "",
+      "cause_categories": [],
+      "cache_sha256": "b4bf0486e26d4077084a2519ca500b490f4e53ec7a5a38fdbad1fd0fe5ac5098"
+    },
+    {
+      "run_id": "x042",
+      "script_type": "skip",
+      "frames": 113,
+      "performed_steps": [
+        "red_out",
+        "red_in_tray",
+        "start_pressed"
+      ],
+      "observed_fired_steps": [
+        "red_out",
+        "red_in_tray",
+        "start_pressed"
+      ],
+      "expected_deviations": [
+        {
+          "deviation_type": "omission",
+          "step_ids": [
+            "yellow_out",
+            "yellow_in_tray"
+          ]
+        }
+      ],
+      "observed_deviations": [
+        {
+          "deviation_type": "omission",
+          "step_ids": [
+            "yellow_out",
+            "yellow_in_tray"
+          ]
+        }
+      ],
+      "match": true,
+      "start_excluded_match": true,
+      "extra_events": 0,
+      "missing_events": 0,
+      "extra_deviations": 0,
+      "missing_deviations": 0,
+      "uncertain": 0,
+      "pos": 0.4285714285714286,
+      "pos_of_performed_steps": 0.4285714285714286,
+      "cause": "",
+      "cause_categories": [],
+      "cache_sha256": "44fb13ceb0db34c1ea56883b73bf6fe11eea13d90f50fa04c42dc368c76eaa72"
+    },
+    {
+      "run_id": "x045",
+      "script_type": "skip",
+      "frames": 135,
+      "performed_steps": [
+        "yellow_out",
+        "yellow_in_tray",
+        "start_pressed",
+        "yellow_stowed"
+      ],
+      "observed_fired_steps": [
+        "yellow_out",
+        "yellow_in_tray",
+        "yellow_stowed"
+      ],
+      "expected_deviations": [
+        {
+          "deviation_type": "omission",
+          "step_ids": [
+            "red_out",
+            "red_in_tray"
+          ]
+        },
+        {
+          "deviation_type": "omission",
+          "step_ids": [
+            "red_stowed"
+          ]
+        }
+      ],
+      "observed_deviations": [
+        {
+          "deviation_type": "omission",
+          "step_ids": [
+            "red_out",
+            "red_in_tray"
+          ]
+        },
+        {
+          "deviation_type": "omission",
+          "step_ids": [
+            "start_pressed",
+            "red_stowed"
+          ]
+        }
+      ],
+      "match": false,
+      "start_excluded_match": true,
+      "extra_events": 0,
+      "missing_events": 1,
+      "extra_deviations": 1,
+      "missing_deviations": 1,
+      "uncertain": 0,
+      "pos": 0.4285714285714286,
+      "pos_of_performed_steps": 0.5714285714285714,
+      "cause": "start_pressed: true for at most 4 consecutive frame(s), shorter than hysteresis_frames=5 (action too short)",
+      "cause_categories": [
+        "missed START press"
+      ],
+      "cache_sha256": "78e033fd000115c99d2e355734772989de5329852546b06e82553c7a83705b72"
+    },
+    {
+      "run_id": "x046",
+      "script_type": "swap",
+      "frames": 195,
+      "performed_steps": [
+        "yellow_out",
+        "yellow_in_tray",
+        "red_out",
+        "red_in_tray",
+        "start_pressed",
+        "yellow_stowed",
+        "red_stowed"
+      ],
+      "observed_fired_steps": [
+        "yellow_out",
+        "yellow_in_tray",
+        "red_out",
+        "red_in_tray",
+        "start_pressed",
+        "yellow_stowed",
+        "red_stowed"
+      ],
+      "expected_deviations": [
+        {
+          "deviation_type": "omission",
+          "step_ids": [
+            "red_out",
+            "red_in_tray"
+          ]
+        },
+        {
+          "deviation_type": "out_of_order",
+          "step_ids": [
+            "red_out"
+          ]
+        },
+        {
+          "deviation_type": "out_of_order",
+          "step_ids": [
+            "red_in_tray"
+          ]
+        },
+        {
+          "deviation_type": "omission",
+          "step_ids": [
+            "red_stowed"
+          ]
+        }
+      ],
+      "observed_deviations": [
+        {
+          "deviation_type": "omission",
+          "step_ids": [
+            "red_out",
+            "red_in_tray"
+          ]
+        },
+        {
+          "deviation_type": "out_of_order",
+          "step_ids": [
+            "red_out"
+          ]
+        },
+        {
+          "deviation_type": "out_of_order",
+          "step_ids": [
+            "red_in_tray"
+          ]
+        },
+        {
+          "deviation_type": "omission",
+          "step_ids": [
+            "red_stowed"
+          ]
+        }
+      ],
+      "match": true,
+      "start_excluded_match": true,
+      "extra_events": 0,
+      "missing_events": 0,
+      "extra_deviations": 0,
+      "missing_deviations": 0,
+      "uncertain": 0,
+      "pos": 0.2857142857142857,
+      "pos_of_performed_steps": 0.2857142857142857,
+      "cause": "",
+      "cause_categories": [],
+      "cache_sha256": "45de9101b197fdb6f04d2b047e4189ab730e3a0c898396197e9a4fe5d8a80ecf"
+    }
+  ],
+  "aggregate": {
+    "runs": 10,
+    "strict_matches": 8,
+    "strict_mismatches": 2,
+    "start_excluded_matches": 10,
+    "max_mismatched_runs": 0,
+    "verdict": "FAIL"
+  },
+  "note": "verdict uses the strict match only; start_excluded_match is information only"
+}

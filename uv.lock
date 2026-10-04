@@ -3754,6 +3754,9 @@ train = [
     { name = "supervision" },
     { name = "torch" },
 ]
+yolo = [
+    { name = "ultralytics" },
+]
 
 [package.metadata]
 requires-dist = [
@@ -3799,7 +3802,7 @@ tools = [
     { name = "rapidfuzz", specifier = ">=3.6,<4" },
     { name = "rfdetr", specifier = ">=1.10,<2" },
     { name = "torch", specifier = ">=2.2,<3" },
-    { name = "ultralytics", specifier = ">=8.3,<9" },
+    { name = "ultralytics", specifier = "==8.4.164" },
 ]
 train = [
     { name = "cryptography", specifier = ">=42,<43" },
@@ -3814,6 +3817,7 @@ train = [
     { name = "supervision", specifier = ">=0.20,<1" },
     { name = "torch", specifier = ">=2.2,<3" },
 ]
+yolo = [{ name = "ultralytics", specifier = "==8.4.164" }]
 
 [[package]]
 name = "six"

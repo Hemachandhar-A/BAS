@@ -32,12 +32,19 @@ train = [
     "supervision>=0.20,<1",
     "pillow>=10.0,<11",
 ]
+# `yolo`: the YOLO11n detector backend. Ultralytics is AGPL-3.0, so it lives
+# in its own optional group: the run group never requires it, and a
+# licence-clean build leaves this group out (R7; ISSUES.md). Pinned to the
+# locked version.
+yolo = [
+    "ultralytics==8.4.164",
+]
 # `tools`: dev-time only, never installed on the demo laptop. Auto-labeling
 # (YOLO-World / Grounding DINO) and the YOLO11n fallback live here because
-# Ultralytics is AGPL-3.0 (R7; ISSUES.md).
+# Ultralytics is AGPL-3.0 (R7; ISSUES.md); it comes from the `yolo` group.
 tools = [
     { include-group = "run" },
-    "ultralytics>=8.3,<9",
+    { include-group = "yolo" },
     "onnx>=1.16,<2",
     "onnxruntime>=1.20,<2",
 ]

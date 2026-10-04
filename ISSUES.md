@@ -1573,3 +1573,108 @@ Detections at or above 0.30 exceed frames-with-detection for red and yellow (val
 **G3 checklist.** MET and checked this session: detector chosen and stamped (YOLO11n active, stamp label in `compose_model_stamp`, `weights/MANIFEST.json` hashes verified at load); real `PerceptionPipeline` (built, 12 + 19 + 23 unit tests, and run on real video); caches for every run (46 of 46, train, val and test, at 10 fps); F1, F2, F3, F14 rows green (and F4 to F13). NOT re-verified here, taken from the earlier ISSUES entries (P1.1 to P1.5, PR #15) rather than checked in this session: all runs validated, static boxes reviewed for every run, dataset reviewed within the bad-label gate, gold subsets of val and test hand-verified (the test report used 80 gold frames). NOT met or open: the Plan's "77 runs" versus 46 recorded; replay of the caches through the tracker and engine (P2.6) and the harness `--video` path.
 
 **NOT done.** RF-DETR full caches, tuning and replay; the dependency regrouping (ultralytics stays an optional group); the frontend toggle (none, by design); P2.6 threshold tuning; the harness `replay --video` switch to `load_pipeline`; pose (off, no pose model in the manifest). No network, download or install; test labels were never read.
+
+
+## 2026-10-04 P2 R7 - dependency group `yolo` (S-H1, block D0)
+
+**Change.** `pyproject.toml` gains the optional group `yolo = ["ultralytics==8.4.164"]` (the exact version already locked). `tools` now takes ultralytics through `{ include-group = "yolo" }` instead of its own `>=8.3,<9` line. The `run` group never required ultralytics (rfdetr's own dependencies do not include it, checked in `uv.lock`), so a licence-clean build leaves `yolo` out. `uv lock` (no `--upgrade`): 275 packages before and after, **no version changed, no package added or removed**; the lock diff is only the new `yolo` group entry and the `tools` specifier text. No package was downloaded and no `uv sync` was needed.
+
+**Install commands (there is no README, so they are here).**
+- Demo laptop: `uv sync --group run --group yolo` (YOLO11n is the default detector; AGPL-3.0, see the P1.5 DECISION). Never the `train` group.
+- Licence-clean build: `uv sync --group run` (no ultralytics; the detector must then be RF-DETR-Nano, `SIH_DETECTOR=rfdetr_nano`, which is not yet validated for the pipeline).
+- Developer laptop: `uv sync --group dev --group tools` (tools includes `yolo`).
+- GPU training PC / Kaggle: install `rfdetr[train]` with pip in an isolated environment (see below); the lockfile's `train` group does not carry it.
+
+**PARKED: `rfdetr[train]` in the lock.** An attempt to add `rfdetr[train]==1.11.0` to the `train` group was resolved and then reverted, changing nothing. It would have (a) changed the existing locked `typer` 0.27.2 -> 0.25.1 and (b) added `opencv-python-headless` 4.11.0.86 beside the locked `opencv-python`, which can shadow or break `cv2` on the demo laptop, plus 25 more packages (accelerate, aiohttp, faster-coco-eval, hotcoco, peft, pillow-avif-plugin, pyarrow, pycocotools, pytorch-lightning, roboflow, torch-hungarian, torchmetrics 1.8.2, ultrafast-pycocotools, vernier and small ones). RF-DETR training is only needed when time permits and the Kaggle route installs with pip. **To revisit only when RF-DETR is retrained:** use an isolated virtual environment, check the licences of roboflow, torch-hungarian, hotcoco, vernier, faster-coco-eval, ultrafast-pycocotools and pillow-avif-plugin, and check that `import cv2` and MediaPipe still work there. Nothing was checked for those licences in this session.
+
+**Dry run.** `python -m training.finetune --model rfdetr --dry-run --output-dir <dir>` (the flag `--output-dir` is required) runs to the end with exit code 0 and a PARTIAL note: pytorch_lightning, torchmetrics and pycocotools are missing, so `train()` was NOT called, only the 2 synthetic forward+backward iterations. It reaches the `train()` call only with the extras installed; that is unchanged. It downloaded nothing.
+
+## 2026-10-04 P2 NOTE - Kaggle FULL-run time (clarification)
+
+The Kaggle FULL-run total of 3,323 s in "2026-10-03 P1 NOTE - Kaggle FULL run (facts)" is the kernel's wall time and includes about 89 s of setup; the two training times (RF-DETR-Nano 2,787 s, YOLO11n 447 s) sum to 3,234 s.
+
+
+## 2026-10-03 P2.6 DECISION - tuning on val
+
+**What was run (S-H1, branch p2-runtime; written 2026-10-04).** `python scripts/replay.py --tune --split val` at `target_fps` 10 (`config/runtime.yaml`) on the 10 val caches (stamp `yolo11n:cb9cd840|hand:fbc2a300|pose:none`, fps 10, both checked against the expected stamp computed from `weights/MANIFEST.json` without loading a model). The test split and its caches were never opened or read: `load_runs` refuses any split but train and val, and `--tune` refuses any split but val (tested). Outputs: `reports/tuning.json`, `config/perception.yaml`. Code: `harness/metrics.py` (verdict, diagnosis, dynamic lint), `harness/tune.py` (grid, selection, outputs), `harness/settings.py`.
+
+**Verdict used.** A run MATCHES iff the observed deviations equal `RunScript.expected_deviations` (same types, step ids and order) AND every step of `performed_steps` was observed firing in order AND there is no extra deviation. Per run also: extra and missing step events, uncertain flags.
+
+**Lint (T0).** The dynamic experiment lint did not exist and was written (`harness/metrics.py: lint_run`, tested). On the 14 train and 4 val `correct` runs, at the defaults: **0 violations**. (The 'turn' of a latched step is taken as the frame where the previous canonical step fired in the replay of that run.)
+
+**Defaults on the 10 VAL runs (detector_conf_floor 0.30, confirm_conf 0.60, hysteresis 5, release 5, baseline 10, touch_margin_frac 0.10): 8 of 10 match.**
+
+| run | type | performed | expected deviations | observed deviations | result | cause (from the data) |
+|---|---|---|---|---|---|---|
+| x015 | correct | all 7 in order | none | none | MATCH | |
+| x016 | correct | all 7 | none | none | MATCH | |
+| x017 | correct | all 7 | none | none | MATCH | |
+| x022 | correct | all 7 | none | omission start_pressed | MISMATCH | missed START press: fingertips were inside the grown button box for at most 3 consecutive frames (0.3 s), shorter than hysteresis 5 |
+| x024 | skip | red_out red_in_tray yellow_out yellow_in_tray | none | none | MATCH | |
+| x025 | swap | yellow_out yellow_in_tray red_out red_in_tray yellow_stowed red_stowed | omission red_out+red_in_tray; out_of_order red_out; out_of_order red_in_tray; omission start_pressed+red_stowed | the same | MATCH | |
+| x028 | swap | ... start_pressed yellow_stowed red_stowed | omission red_stowed | omission red_stowed | MATCH | |
+| x032 | skip | ... yellow_in_tray red_stowed yellow_stowed | omission start_pressed | omission start_pressed | MATCH | |
+| x036 | idle | none | none | none | MATCH | |
+| x040 | repeat | start_pressed start_pressed | omission red_out+red_in_tray+yellow_out+yellow_in_tray; repeat start_pressed | the omission only | MISMATCH | repeat press not seen: the fingertips stay in the box for up to 38 consecutive frames, so the rule never goes false for release_frames and the second press merges into one hold |
+
+Extra/missing events and uncertain flags over the 10 runs at the defaults: 2 missing (x022, x040), 0 extra, 4 uncertain.
+
+**Sweep (T2).** Grid (as pre-registered): floor {0.20,0.30,0.40,0.50} x confirm {0.50,0.60,0.70} x hysteresis {3,4,5,6,8} x release {3,5,8} x baseline {5,10,15} x touch margin {0.05,0.10,0.25}: 1,620 settings, none rejected by the contract (the lowest confirm_conf equals the highest floor), 15 s. **Best setting: 8 of 10, the same as the defaults; no setting reached 9.** All top-20 settings have 8 matches, so nothing beats the defaults by one run and the pre-registered rule keeps the defaults. (By the secondary and tertiary rules the best-ranked 8-match setting is confirm_conf 0.50, with 0 uncertain flags instead of 4; it is not chosen because it does not add a matching run.) **Chosen: the defaults**, written explicitly in `config/perception.yaml` with the comment 'defaults retained: no setting beat them by one run on val'.
+
+**Selection rule (fixed before the sweep):** (1) most matching val runs; (2) fewest extra plus missing events; (3) fewest uncertain flags; (4) closest to the defaults (grid steps, then parameter tuple); a setting replaces the defaults only with at least one more matching run.
+
+**Sensitivity (mean matches over all settings with that value; of 1,620, best possible 8).** detector_conf_floor 0.20 / 0.30 / 0.40 / 0.50: 6.89 / 6.33 / 6.11 / 5.78 (a lower floor helps on average, never beyond 8). confirm_conf: 6.28 for all three (it only moves the uncertain flag, never a verdict). baseline_frames: 6.28 for all three (no effect on val). hysteresis 3 / 4 / 5 / 6 / 8: 6.28 for the first four, 6.28 at 8 with a lower best (7). release_frames 3 / 5 / 8: 5.42 / 6.42 / 7.00 (longer is safer for the START press; 3 breaks runs). touch_margin_frac 0.05 / 0.10 / 0.25: 6.25 / 7.05 / 5.53 (the middle value is clearly the best). Runs that fail across the 1,620 settings: x040 in all 1,620, x022 in 1,512, x016 in 1,188, x032 in 990, x024 in 540, x017 in 180; x015, x025, x028 and x036 in none.
+
+**Why x022 is not simply fixed.** hysteresis 3 (others default) makes x022 match but x016 gets a second START firing (an extra press) and x040 still fails: a trade of one run for one. That is why no setting reaches 9.
+
+**Information only (T1/T3), train, not used for selection (the detector saw those frames).** At the defaults, which are also the chosen config (so the chosen-versus-defaults comparison is identical): **9 of 26 train runs match**; of the 14 `correct` train runs 3 match (x004, x018, x019). The mismatches in the correct runs: 6 show a missed START press (fingertips in the box for 1 to 3 consecutive frames: x003, x006, x007, x008, x010, x012) and 5 show a second START firing, an extra press (x001, x005, x011, x020, x021). Other train mismatches: x026, x034, x037, x044 short START press; x027 short START press plus a spurious second red_stowed; x030 a second red_stowed. No train mismatch is caused by a missing container box. The dynamic lint is clean on the same runs.
+
+**Consequences for the acceptance file (not amended here; the single amendment is for the Lead and Claude).** Under the strict criterion `exact_deviation_match: true` with `max_mismatched_runs: 0`, the defaults give **2 mismatched val runs of 10 (x022, x040): the criterion fails on val**, and so would every other setting of the grid (best 8 of 10, so at least 2 mismatches). Causes: (a) **the documented START-press limitation (fingertip rule, 9 of 14 correct train clips with exactly one press)**: both mismatches, x022 (a press shorter than the hysteresis) and x040 (a repeated press the fingertip rule cannot separate from the first hold); on train the same limitation accounts for 6 missed and 5 extra presses in the 14 correct runs, which is why only 3 of 14 match there; (b) **missing container boxes: none** of the val mismatches (and none on train); (c) **settings: none**: the only setting-related finding is the trade-off that hysteresis 3 repairs x022 and breaks x016, so no setting yields zero mismatches. Whatever the Lead decides for the acceptance file, `max_mismatched_runs: 0` cannot be met with the current START rule; the limitation belongs to the rule (hand_touching over fingertips), which is outside this session (state/ semantics are read only). **Proposal, not an edit:** for the START step either relax the criterion to a small allowed mismatch count with the START limitation documented, or study a START rule change (for example a contact that ignores a press shorter than hysteresis, or a release measured on the fingertip leaving the grown box) as a separate CONTRACT or state/ change.
+
+## 2026-10-04 P2 NOTE (S-H1) - what else changed in harness/ and scripts/
+
+`config/runtime.yaml` sets `target_fps: 10` (RuntimeConfig's default of 15 in contracts.py is untouched); the replay entry points load it through `harness/settings.py` (unknown keys and a missing file fail loudly); `scripts/dev.py` already read `config/runtime.yaml` and `config/perception.yaml` when they exist, so the live run picks them up (dev.py itself still has the old `PerceptionPipeline(perception_config)` call and was not touched: P2's later runtime session). `harness/replay.py --from-cache` refuses a cache whose header fps differs from `target_fps` or whose `model_stamp` differs from the expected stamp of the active detector (computed from `weights/MANIFEST.json`, reproduces the stamp in the real cache headers; tested). `--video` builds the pipeline with `perception.pipeline.load_pipeline()` (honours `SIH_DETECTOR`), resets it, and decimates with the same rule as the cache builder (`round(source_fps/target_fps)`); on val clip x015 the first 100 decimated frames gave 5 events from the cache replay and the same 5 events (same steps, times and confidence tags) from the real `--video` replay. `scripts/replay.py` now puts the repo root on `sys.path`, because `python scripts/replay.py` failed to import `harness` before. Tests: 1,116 pass in `check.py`; `--status` all GREEN.
+
+## 2026-10-03 P2.6 DECISION - acceptance file NOT amended: strict replay criterion retained
+
+**Decision (recorded 2026-10-04, BEFORE any test cache was opened; branch p2-runtime).** The single amendment allowed by `config/acceptance.yaml` is deliberately NOT used. The file stays exactly as committed in c89bee8 (`git diff c89bee8 -- config/acceptance.yaml` is empty; sha256 of the working-tree file `477b2be4a016c6bf3dd0c5e834dec391a155131fce1c851d777c0259eff30db5`): `replay: { exact_deviation_match: true, max_mismatched_runs: 0 }`.
+
+**Evidence.**
+- Val, at the defaults held in `config/perception.yaml`: **8 of 10 runs match**. The two mismatches, x022 (a START press of at most 3 frames, shorter than hysteresis 5) and x040 (two START presses that merge, because the overhead camera cannot see a lifted fingertip and the fingertip-in-box signal never goes false), are both the documented START-press limitation. The sweep of 1,620 settings on val found nothing better than 8 of 10 (see the P2.6 tuning entry).
+- Train, information only (never used for selection): **9 of 26 runs match**.
+- Label audit: the Lead audited every label of all 10 val runs and all 10 test runs by watching the videos (no replay output was looked at for test). All labels are correct; no corrections.
+
+**What will be judged.** The one test replay is judged against `exact_deviation_match: true` and `max_mismatched_runs: 0`, as written.
+
+**Expected consequence.** A probable FAIL, because of the START limitation. The result is reported as measured. The formal G4 gate stays open with a documented limitation. No later amendment of the acceptance file is made for this model version.
+
+**START-excluded count.** A count that removes the step `start_pressed` is reported for information only. It never changes a verdict.
+
+Signed: P2 owner and P1 owner, both by the Lead acting as both.
+
+## 2026-10-03 P2.7 (S-H2) - test replay
+
+**What was run (written 2026-10-04).** The decision record (commit 40881b9, 2026-10-04T11:13:35+05:30) was pushed before any test cache was opened. Then `python scripts/replay.py --from-cache all --split test` ran **once** (2026-10-04T11:25:46+05:30) on the 10 test caches (stamp `yolo11n:cb9cd840|hand:fbc2a300|pose:none`, fps 10, checked against the expected stamp and `target_fps`), with `config/perception.yaml` (the defaults) and `config/runtime.yaml`. Output: `reports/replay_test.json` (acceptance values and sha256 `477b2be4...30db5` read from `config/acceptance.yaml`, which is unchanged since c89bee8). Code: `harness/heldout.py` (new), `harness/tune.py` (`load_runs` gained an `allowed` argument whose default still refuses test), `harness/replay.py` (`--split test`, `--allow-repeat-test REASON`, `--report`). Guard: a second `--split test` run is refused while `reports/replay_test.json` exists unless `--allow-repeat-test "<reason>"` is given (the reason is recorded in the new report). The START-excluded verdict (`start_excluded_verdict`) removes `start_pressed` from the expected and observed deviations, from `performed_steps` and from the observed firings, then applies the same MATCH rule; it is for information only.
+
+**Result against `exact_deviation_match: true`, `max_mismatched_runs: 0`: FAILED.**
+
+| run | type | performed | expected deviations | observed deviations | strict | START-excl. | extra/missing/unc | POS | cause (from the data) |
+|---|---|---|---|---|---|---|---|---|---|
+| x002 | correct | all 7 | none | none | MATCH | match | 0/0/0 | 1.000 | |
+| x009 | correct | all 7 | none | none | MATCH | match | 0/0/0 | 1.000 | |
+| x013 | correct | all 7 | none | none | MATCH | match | 0/0/0 | 1.000 | |
+| x014 | correct | all 7 | none | repeat start_pressed, repeat start_pressed | **MISMATCH** | match | 2/0/2 | 0.714 | extra press: start_pressed fired 3x, performed 1x, at t=7.9, 14.7, 20.5 s |
+| x035 | idle | none | none | none | MATCH | match | 0/0/0 | 0.000 | |
+| x038 | repeat | red_out red_in_tray start_pressed red_stowed start_pressed | omission yellow_out+yellow_in_tray; repeat start_pressed | the same | MATCH | match | 0/0/0 | 0.571 | |
+| x041 | swap | red_out red_in_tray red_stowed yellow_out yellow_in_tray yellow_stowed | omission yellow_out+yellow_in_tray+start_pressed; out_of_order yellow_out; out_of_order yellow_in_tray | the same | MATCH | match | 0/0/0 | 0.571 | |
+| x042 | skip | red_out red_in_tray start_pressed | omission yellow_out+yellow_in_tray | the same | MATCH | match | 0/0/0 | 0.429 | |
+| x045 | skip | yellow_out yellow_in_tray start_pressed yellow_stowed | omission red_out+red_in_tray; omission red_stowed | omission red_out+red_in_tray; omission start_pressed+red_stowed | **MISMATCH** | match | 0/1/0 | 0.429 (performed 0.571) | missed START press: the fingertip was in the grown button box for at most 4 consecutive frames, shorter than hysteresis 5 |
+| x046 | swap | yellow_out yellow_in_tray red_out red_in_tray start_pressed yellow_stowed red_stowed | omission red_out+red_in_tray; out_of_order red_out; out_of_order red_in_tray; omission red_stowed | the same | MATCH | match | 0/0/0 | 0.286 | |
+
+**Aggregate.** 10 runs; strict matches **8**, strict mismatches **2** (x014, x045); START-excluded matches 10 (information only); `max_mismatched_runs` 0; **verdict FAIL**. Both mismatches are the documented START-press limitation: one extra press (x014, a correct run, two extra START firings) and one missed press shorter than the hysteresis (x045). No mismatch is caused by a missing container box or a baseline latch. The result equals the val result (8 of 10). `check.py` full: 1,137 passed; `--status` all GREEN (F1 to F14).
+
+**Consequence.** The formal G4 gate stays open with the START-press limitation documented; the acceptance file is not amended, as decided above.
+
+**Caveats.** One performer, one camera setup, no gloves; 10 test runs, so 8 of 10 has a wide uncertainty; the START-press limitation (fingertip rule); the detector acceptance (recall and mAP50 on gold test frames) was evaluated separately and is not part of this replay; the START-excluded count is information only and does not change the verdict.
+
+**NOT done.** No tuning and no setting, threshold or rule changed; no second replay; no amendment of `config/acceptance.yaml`; no PR opened or merged.

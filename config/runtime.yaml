@@ -1,0 +1,5 @@
+# RuntimeConfig overrides for the live run and the replay (RuntimeConfig keys
+# only; an unknown key is an error). target_fps is 10: measured pipeline median
+# 47.7 ms per frame on the demo laptop (ISSUES.md, 2026-10-03 P1.7 DECISION).
+# contracts.RuntimeConfig's own default (15) is not edited.
+target_fps: 10

@@ -1,4 +1,4 @@
-"""harness/replay.py -- the three replay modes (IMPLEMENTATION_PLAN.md 5.9,
+﻿"""harness/replay.py -- the three replay modes (IMPLEMENTATION_PLAN.md 5.9,
 Part 10 P2.4) and the scripts/replay.py CLI. ``ReplayResult`` is a
 TEMP_1 stub (ISSUES.md, 2026-09-28 P2.4 CONTRACT) since contracts.py does
 not define one yet."""
@@ -12,7 +12,13 @@ from pathlib import Path
 
 import pytest
 
-from contracts import ExperimentDefinition, PerceptionCacheHeader, PerceptionFrame, RunScript
+from contracts import (
+    ExperimentDefinition,
+    PerceptionCacheHeader,
+    PerceptionFrame,
+    RunScript,
+    RuntimeConfig,
+)
 from harness.replay import main, replay_from_cache, replay_from_video, replay_scripted
 
 FIXTURE_PATH = Path(__file__).resolve().parents[3] / "fixtures" / "experiment_4step.json"
@@ -94,104 +100,174 @@ def test_replay_from_cache_rejects_a_cache_built_for_a_different_experiment(
 
 
 # ---------------------------------------------------------------------------
-# --video mode -- perception/ does not exist yet (P1.1/P1.6 land later)
+# ---------------------------------------------------------------------------
+# --from-cache: refuses a cache with another fps or model_stamp (R0.2)
 # ---------------------------------------------------------------------------
 
 
-def test_replay_from_video_raises_import_error_until_perception_lands(
+def test_replay_from_cache_refuses_a_different_stamp_or_fps(
+    experiment: ExperimentDefinition, tmp_path: Path
+) -> None:
+    from perception.cache import CacheMismatch
+
+    cache_dir = tmp_path / "cache"
+    _write_cache(cache_dir, "r1", experiment.experiment_id, [PerceptionFrame(frame_id=0, t=0.0)])
+
+    ok = replay_from_cache(  # header is fps 15.0 / "fake:stamp"
+        experiment, "r1", cache_dir=cache_dir, log_dir=tmp_path,
+        expected_stamp="fake:stamp", expected_fps=15.0,
+    )  # fmt: skip
+    assert ok.frames_processed == 1
+    with pytest.raises(CacheMismatch, match="model_stamp"):
+        replay_from_cache(
+            experiment, "r1", cache_dir=cache_dir, log_dir=tmp_path, expected_stamp="other:stamp"
+        )
+    with pytest.raises(CacheMismatch, match="fps"):
+        replay_from_cache(
+            experiment, "r1", cache_dir=cache_dir, log_dir=tmp_path, expected_fps=10.0
+        )
+
+
+def test_cli_from_cache_refuses_a_mismatched_cache(
+    experiment: ExperimentDefinition, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    cache_dir = tmp_path / "cache"  # header: fps 15.0, stamp "fake:stamp"; config: fps 10
+    _write_cache(cache_dir, "r1", experiment.experiment_id, [PerceptionFrame(frame_id=0, t=0.0)])
+    rc = main(
+        ["--from-cache", "r1", "--cache-dir", str(cache_dir), "--experiment", str(FIXTURE_PATH)]
+    )
+    assert rc == 2
+    assert "model_stamp" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize("split", ["test", "train", "all"])
+def test_cli_tune_refuses_any_split_but_val(split: str, capsys: pytest.CaptureFixture[str]) -> None:
+    assert main(["--tune", "--split", split]) == 2
+    assert "val split only" in capsys.readouterr().err
+
+
+# ---------------------------------------------------------------------------
+# --video mode (perception.pipeline.load_pipeline, injected here)
+# ---------------------------------------------------------------------------
+
+
+class _FakeSource:
+    def __init__(self, n: int = 3, fps: float | None = None) -> None:
+        self._ids = list(range(n))
+        self.fps = fps
+        self.exhausted = False
+        self.closed = False
+
+    def read(self):
+        if not self._ids:
+            self.exhausted = True
+            return None
+        frame_id = self._ids.pop(0)
+        return types.SimpleNamespace(frame_id=frame_id, t=frame_id / 30.0)
+
+    def close(self) -> None:
+        self.closed = True
+
+
+def _stub_camera(monkeypatch: pytest.MonkeyPatch, source: _FakeSource) -> None:
+    camera = types.ModuleType("perception.camera")
+    camera.open_source = lambda path: source
+    monkeypatch.setitem(sys.modules, "perception.camera", camera)
+
+
+class _FakePipeline:
+    def __init__(self, fail_on: int | None = None) -> None:
+        self.fail_on = fail_on
+        self.seen: list[int] = []
+        self.resets = 0
+
+    def process(self, frame):
+        self.seen.append(frame.frame_id)
+        if frame.frame_id == self.fail_on:
+            raise RuntimeError("boom")
+        return PerceptionFrame(frame_id=frame.frame_id, t=frame.t)
+
+    def reset(self) -> None:
+        self.resets += 1
+
+
+def test_replay_from_video_defaults_to_load_pipeline(
     experiment: ExperimentDefinition, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    # perception/pipeline.py has landed (P1.6); stub its absence so the path stays tested
+    fake = _FakePipeline()
+    pipeline_mod = types.ModuleType("perception.pipeline")
+    pipeline_mod.load_pipeline = lambda: fake
+    monkeypatch.setitem(sys.modules, "perception.pipeline", pipeline_mod)
+    _stub_camera(monkeypatch, _FakeSource(3))
+
+    result = replay_from_video(
+        experiment, "dummy.mp4", runtime_config=RuntimeConfig(target_fps=30.0), log_dir=tmp_path
+    )
+
+    assert fake.seen == [0, 1, 2] and fake.resets == 1
+    assert result.frames_processed == 3
+
+
+def test_replay_from_video_raises_import_error_without_the_pipeline_module(
+    experiment: ExperimentDefinition, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     monkeypatch.setitem(sys.modules, "perception.pipeline", None)
+    _stub_camera(monkeypatch, _FakeSource(1))
     with pytest.raises(ImportError):
-        replay_from_video(experiment, tmp_path / "does_not_matter.mp4", log_dir=tmp_path)
+        replay_from_video(experiment, "dummy.mp4", log_dir=tmp_path)
 
 
 def test_replay_from_video_closes_the_source_even_if_pipeline_construction_fails(
     experiment: ExperimentDefinition, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """A resource-leak regression check: ``source`` is opened before
-    ``PerceptionPipeline`` is constructed, so a failure there must not skip
-    closing the already-open source (a real camera/file handle)."""
-    closed = []
+    """A resource-leak regression check: ``source`` is opened before the pipeline is built, so
+    a failure there must not skip closing the already-open source."""
+    source = _FakeSource(1)
+    _stub_camera(monkeypatch, source)
 
-    class _FakeSource:
-        exhausted = True
-        fps = None
-
-        def read(self):
-            return None
-
-        def close(self):
-            closed.append(True)
-
-    class _FailingPipeline:
-        def __init__(self, config):
-            raise RuntimeError("pipeline construction boom")
-
-    fake_perception_pkg = types.ModuleType("perception")
-    fake_camera_mod = types.ModuleType("perception.camera")
-    fake_camera_mod.open_source = lambda path: _FakeSource()
-    fake_pipeline_mod = types.ModuleType("perception.pipeline")
-    fake_pipeline_mod.PerceptionPipeline = _FailingPipeline
-
-    monkeypatch.setitem(sys.modules, "perception", fake_perception_pkg)
-    monkeypatch.setitem(sys.modules, "perception.camera", fake_camera_mod)
-    monkeypatch.setitem(sys.modules, "perception.pipeline", fake_pipeline_mod)
+    def boom():
+        raise RuntimeError("pipeline construction boom")
 
     with pytest.raises(RuntimeError, match="pipeline construction boom"):
-        replay_from_video(experiment, "dummy.mp4", log_dir=tmp_path)
+        replay_from_video(experiment, "dummy.mp4", log_dir=tmp_path, pipeline_factory=boom)
 
-    assert closed == [True]
+    assert source.closed
 
 
 def test_replay_from_video_skips_a_bad_frame_and_keeps_going(
     experiment: ExperimentDefinition, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Matches runtime/loop.py's live behavior: a single frame that fails
-    perception is skipped, not fatal to the whole replay."""
-    frame_ids = [0, 1, 2]
-
-    class _FakeSource:
-        fps = None
-
-        def __init__(self):
-            self._ids = list(frame_ids)
-            self.exhausted = False
-
-        def read(self):
-            if not self._ids:
-                self.exhausted = True
-                return None
-            frame_id = self._ids.pop(0)
-            return types.SimpleNamespace(frame_id=frame_id, t=float(frame_id))
-
-        def close(self):
-            pass
-
-    class _FlakyPipeline:
-        def __init__(self, config):
-            pass
-
-        def process(self, frame):
-            if frame.frame_id == 1:
-                raise RuntimeError("boom on frame 1")
-            return PerceptionFrame(frame_id=frame.frame_id, t=frame.t)
-
-    fake_perception_pkg = types.ModuleType("perception")
-    fake_camera_mod = types.ModuleType("perception.camera")
-    fake_camera_mod.open_source = lambda path: _FakeSource()
-    fake_pipeline_mod = types.ModuleType("perception.pipeline")
-    fake_pipeline_mod.PerceptionPipeline = _FlakyPipeline
-
-    monkeypatch.setitem(sys.modules, "perception", fake_perception_pkg)
-    monkeypatch.setitem(sys.modules, "perception.camera", fake_camera_mod)
-    monkeypatch.setitem(sys.modules, "perception.pipeline", fake_pipeline_mod)
-
-    result = replay_from_video(experiment, "dummy.mp4", log_dir=tmp_path, run_id="flaky-video")
-
+    """Matches runtime/loop.py's live behavior: a frame that fails perception is skipped."""
+    _stub_camera(monkeypatch, _FakeSource(3))
+    result = replay_from_video(
+        experiment, "dummy.mp4", runtime_config=RuntimeConfig(target_fps=30.0),
+        log_dir=tmp_path, run_id="flaky-video", pipeline_factory=lambda: _FakePipeline(fail_on=1),
+    )  # fmt: skip
     assert result.frames_processed == 3  # frame 1 was attempted and counted, then skipped
 
+
+def test_replay_from_video_decimates_like_the_cache_builder(
+    experiment: ExperimentDefinition, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from harness.replay import decimation_every
+
+    assert decimation_every(29.99, 10.0) == 3  # the real recordings: every 3rd frame
+    assert decimation_every(None, 10.0) == 3  # unknown source fps counts as the capture rate
+    assert decimation_every(5.0, 10.0) == 1
+    fake = _FakePipeline()
+    _stub_camera(monkeypatch, _FakeSource(10, fps=29.99))
+    replay_from_video(
+        experiment, "dummy.mp4", runtime_config=RuntimeConfig(target_fps=10.0),
+        log_dir=tmp_path, pipeline_factory=lambda: fake,
+    )  # fmt: skip
+    assert fake.seen == [0, 3, 6, 9]  # original frame ids are kept
+    fake2 = _FakePipeline()
+    _stub_camera(monkeypatch, _FakeSource(30, fps=29.99))
+    replay_from_video(
+        experiment, "dummy.mp4", runtime_config=RuntimeConfig(target_fps=10.0),
+        log_dir=tmp_path, pipeline_factory=lambda: fake2, max_frames=4,
+    )  # fmt: skip
+    assert fake2.seen == [0, 3, 6, 9]
 
 # ---------------------------------------------------------------------------
 # scripts/replay.py CLI (harness.replay.main)
