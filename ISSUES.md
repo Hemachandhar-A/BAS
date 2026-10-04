@@ -1634,3 +1634,20 @@ Extra/missing events and uncertain flags over the 10 runs at the defaults: 2 mis
 ## 2026-10-04 P2 NOTE (S-H1) - what else changed in harness/ and scripts/
 
 `config/runtime.yaml` sets `target_fps: 10` (RuntimeConfig's default of 15 in contracts.py is untouched); the replay entry points load it through `harness/settings.py` (unknown keys and a missing file fail loudly); `scripts/dev.py` already read `config/runtime.yaml` and `config/perception.yaml` when they exist, so the live run picks them up (dev.py itself still has the old `PerceptionPipeline(perception_config)` call and was not touched: P2's later runtime session). `harness/replay.py --from-cache` refuses a cache whose header fps differs from `target_fps` or whose `model_stamp` differs from the expected stamp of the active detector (computed from `weights/MANIFEST.json`, reproduces the stamp in the real cache headers; tested). `--video` builds the pipeline with `perception.pipeline.load_pipeline()` (honours `SIH_DETECTOR`), resets it, and decimates with the same rule as the cache builder (`round(source_fps/target_fps)`); on val clip x015 the first 100 decimated frames gave 5 events from the cache replay and the same 5 events (same steps, times and confidence tags) from the real `--video` replay. `scripts/replay.py` now puts the repo root on `sys.path`, because `python scripts/replay.py` failed to import `harness` before. Tests: 1,116 pass in `check.py`; `--status` all GREEN.
+
+## 2026-10-03 P2.6 DECISION - acceptance file NOT amended: strict replay criterion retained
+
+**Decision (recorded 2026-10-04, BEFORE any test cache was opened; branch p2-runtime).** The single amendment allowed by `config/acceptance.yaml` is deliberately NOT used. The file stays exactly as committed in c89bee8 (`git diff c89bee8 -- config/acceptance.yaml` is empty; sha256 of the working-tree file `477b2be4a016c6bf3dd0c5e834dec391a155131fce1c851d777c0259eff30db5`): `replay: { exact_deviation_match: true, max_mismatched_runs: 0 }`.
+
+**Evidence.**
+- Val, at the defaults held in `config/perception.yaml`: **8 of 10 runs match**. The two mismatches, x022 (a START press of at most 3 frames, shorter than hysteresis 5) and x040 (two START presses that merge, because the overhead camera cannot see a lifted fingertip and the fingertip-in-box signal never goes false), are both the documented START-press limitation. The sweep of 1,620 settings on val found nothing better than 8 of 10 (see the P2.6 tuning entry).
+- Train, information only (never used for selection): **9 of 26 runs match**.
+- Label audit: the Lead audited every label of all 10 val runs and all 10 test runs by watching the videos (no replay output was looked at for test). All labels are correct; no corrections.
+
+**What will be judged.** The one test replay is judged against `exact_deviation_match: true` and `max_mismatched_runs: 0`, as written.
+
+**Expected consequence.** A probable FAIL, because of the START limitation. The result is reported as measured. The formal G4 gate stays open with a documented limitation. No later amendment of the acceptance file is made for this model version.
+
+**START-excluded count.** A count that removes the step `start_pressed` is reported for information only. It never changes a verdict.
+
+Signed: P2 owner and P1 owner, both by the Lead acting as both.
