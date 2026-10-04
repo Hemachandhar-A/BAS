@@ -497,10 +497,6 @@ class StartGate:
     def release(self) -> None:
         self._event.set()
 
-    def wait(self, timeout: float) -> None:
-        """Sleeps up to ``timeout`` seconds, waking at once when the gate is released."""
-        self._event.wait(timeout)
-
 
 class PacedSource(_SourceWrapper):
     """Real-time pacing for a file replay: ``read()`` returns a frame no earlier than its ``t``
@@ -529,8 +525,6 @@ class PacedSource(_SourceWrapper):
         self._sleep = sleep
         self._resync_after_s = resync_after_s
         self._gate = gate
-        # The real sleep is replaced by the gate's own wait, so a release is felt at once.
-        self._hold_sleep = gate.wait if gate is not None and sleep is time.sleep else sleep
         self._hold_interval_s = hold_interval_s
         self._wait_log_every_s = wait_log_every_s
         self._origin: float | None = None  # clock() value at which t == 0
@@ -545,7 +539,7 @@ class PacedSource(_SourceWrapper):
             self._held = frame
             self._next_wait_log = self._clock()
         else:
-            self._hold_sleep(self._hold_interval_s)
+            self._sleep(self._hold_interval_s)
         now = self._clock()
         if now >= self._next_wait_log:
             logger.info("waiting for dashboard (the run starts when the page asks for it)")
@@ -1243,7 +1237,7 @@ def release_gate_when_running(
     gate_of: Callable[[], StartGate],
     stop: threading.Event,
     *,
-    poll_s: float = 0.005,
+    poll_s: float = 0.02,
     sleep: Callable[[float], None] = time.sleep,
 ) -> bool:
     """Polls the status store (``router.run_state``, no server change) and releases the gate the

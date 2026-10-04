@@ -206,7 +206,8 @@ def measure_once(perception, speech_delay: float, work: Path) -> dict:  # noqa: 
     halt = threading.Event()
     releaser = threading.Thread(
         target=live.release_gate_when_running,
-        args=(system.router, lambda: gate, halt, 0.005),
+        args=(system.router, lambda: gate, halt),
+        kwargs={"poll_s": 0.005},
         daemon=True,
     )
     releaser.start()
@@ -302,4 +303,9 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    code = main()
+    sys.stdout.flush()
+    # A hand landmarker replaced by reset() can block the interpreter's exit (ISSUES.md S-I1b).
+    import os
+
+    os._exit(code)
