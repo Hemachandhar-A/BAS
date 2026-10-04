@@ -1573,3 +1573,22 @@ Detections at or above 0.30 exceed frames-with-detection for red and yellow (val
 **G3 checklist.** MET and checked this session: detector chosen and stamped (YOLO11n active, stamp label in `compose_model_stamp`, `weights/MANIFEST.json` hashes verified at load); real `PerceptionPipeline` (built, 12 + 19 + 23 unit tests, and run on real video); caches for every run (46 of 46, train, val and test, at 10 fps); F1, F2, F3, F14 rows green (and F4 to F13). NOT re-verified here, taken from the earlier ISSUES entries (P1.1 to P1.5, PR #15) rather than checked in this session: all runs validated, static boxes reviewed for every run, dataset reviewed within the bad-label gate, gold subsets of val and test hand-verified (the test report used 80 gold frames). NOT met or open: the Plan's "77 runs" versus 46 recorded; replay of the caches through the tracker and engine (P2.6) and the harness `--video` path.
 
 **NOT done.** RF-DETR full caches, tuning and replay; the dependency regrouping (ultralytics stays an optional group); the frontend toggle (none, by design); P2.6 threshold tuning; the harness `replay --video` switch to `load_pipeline`; pose (off, no pose model in the manifest). No network, download or install; test labels were never read.
+
+
+## 2026-10-04 P2 R7 - dependency group `yolo` (S-H1, block D0)
+
+**Change.** `pyproject.toml` gains the optional group `yolo = ["ultralytics==8.4.164"]` (the exact version already locked). `tools` now takes ultralytics through `{ include-group = "yolo" }` instead of its own `>=8.3,<9` line. The `run` group never required ultralytics (rfdetr's own dependencies do not include it, checked in `uv.lock`), so a licence-clean build leaves `yolo` out. `uv lock` (no `--upgrade`): 275 packages before and after, **no version changed, no package added or removed**; the lock diff is only the new `yolo` group entry and the `tools` specifier text. No package was downloaded and no `uv sync` was needed.
+
+**Install commands (there is no README, so they are here).**
+- Demo laptop: `uv sync --group run --group yolo` (YOLO11n is the default detector; AGPL-3.0, see the P1.5 DECISION). Never the `train` group.
+- Licence-clean build: `uv sync --group run` (no ultralytics; the detector must then be RF-DETR-Nano, `SIH_DETECTOR=rfdetr_nano`, which is not yet validated for the pipeline).
+- Developer laptop: `uv sync --group dev --group tools` (tools includes `yolo`).
+- GPU training PC / Kaggle: install `rfdetr[train]` with pip in an isolated environment (see below); the lockfile's `train` group does not carry it.
+
+**PARKED: `rfdetr[train]` in the lock.** An attempt to add `rfdetr[train]==1.11.0` to the `train` group was resolved and then reverted, changing nothing. It would have (a) changed the existing locked `typer` 0.27.2 -> 0.25.1 and (b) added `opencv-python-headless` 4.11.0.86 beside the locked `opencv-python`, which can shadow or break `cv2` on the demo laptop, plus 25 more packages (accelerate, aiohttp, faster-coco-eval, hotcoco, peft, pillow-avif-plugin, pyarrow, pycocotools, pytorch-lightning, roboflow, torch-hungarian, torchmetrics 1.8.2, ultrafast-pycocotools, vernier and small ones). RF-DETR training is only needed when time permits and the Kaggle route installs with pip. **To revisit only when RF-DETR is retrained:** use an isolated virtual environment, check the licences of roboflow, torch-hungarian, hotcoco, vernier, faster-coco-eval, ultrafast-pycocotools and pillow-avif-plugin, and check that `import cv2` and MediaPipe still work there. Nothing was checked for those licences in this session.
+
+**Dry run.** `python -m training.finetune --model rfdetr --dry-run --output-dir <dir>` (the flag `--output-dir` is required) runs to the end with exit code 0 and a PARTIAL note: pytorch_lightning, torchmetrics and pycocotools are missing, so `train()` was NOT called, only the 2 synthetic forward+backward iterations. It reaches the `train()` call only with the extras installed; that is unchanged. It downloaded nothing.
+
+## 2026-10-04 P2 NOTE - Kaggle FULL-run time (clarification)
+
+The Kaggle FULL-run total of 3,323 s in "2026-10-03 P1 NOTE - Kaggle FULL run (facts)" is the kernel's wall time and includes about 89 s of setup; the two training times (RF-DETR-Nano 2,787 s, YOLO11n 447 s) sum to 3,234 s.
