@@ -1,4 +1,4 @@
-﻿"""harness/replay.py -- replay a recorded/cached/scripted run through
+"""harness/replay.py -- replay a recorded/cached/scripted run through
 StateTracker + SequenceEngine + Router (the same routing runtime/loop.py
 uses live), producing a ``TEMP_1_ReplayResult``.
 
@@ -325,10 +325,16 @@ def main(argv: list[str] | None = None) -> int:
         "--allow-repeat-test",
         metavar="REASON",
         default=None,
-        help="--split test: allow a second test replay although the report exists; "
+        help="--split test: allow a second test replay although the report or the marker exists; "
         "the reason is recorded in the new report",
     )
     parser.add_argument("--report", default=ROOT / "reports" / "replay_test.json", type=Path)
+    parser.add_argument(
+        "--marker",
+        default=ROOT / "reports" / ".replay_test_done",
+        type=Path,
+        help="--split test: the fixed marker the repeat guard checks besides the report",
+    )
     parser.add_argument("--acceptance", default=ROOT / "config" / "acceptance.yaml", type=Path)
     args = parser.parse_args(argv)
 
