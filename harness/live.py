@@ -948,6 +948,7 @@ class LiveOptions:
     allow_heldout: bool = False
     loop_source: bool = False
     max_speed: bool = False
+    unthrottled: bool = False
     duration_s: float | None = None
     exit_when_done: bool = False
     auto_start: bool | None = None  # None: on for a replay, off for a camera
@@ -969,7 +970,7 @@ def effective_runtime(options: LiveOptions, runtime: RuntimeConfig) -> RuntimeCo
     update: dict[str, Any] = {}
     if options.port is not None:
         update["port"] = options.port
-    if options.max_speed:
+    if options.max_speed or options.unthrottled:
         update["target_fps"] = UNTHROTTLED_FPS
     cfg = runtime.model_copy(update=update) if update else runtime
     if options.tls == "off":

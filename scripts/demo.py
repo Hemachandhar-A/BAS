@@ -90,6 +90,12 @@ def build_parser() -> argparse.ArgumentParser:
         "(events are not meaningful in this mode)",
     )
     measure.add_argument(
+        "--unthrottled",
+        action="store_true",
+        help="keep real-time pacing but lift the target_fps throttle: the pipeline's own speed,\n"
+        "capped by the source's frame rate",
+    )
+    measure.add_argument(
         "--duration",
         type=float,
         default=None,
@@ -140,6 +146,7 @@ def main(argv: list[str] | None = None) -> int:
         allow_heldout=args.allow_heldout,
         loop_source=args.loop,
         max_speed=args.max_speed,
+        unthrottled=args.unthrottled,
         duration_s=args.duration,
         exit_when_done=args.exit_when_done,
         auto_start=args.auto_start,

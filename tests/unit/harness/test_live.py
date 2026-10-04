@@ -501,3 +501,8 @@ def test_metrics_are_fed_by_the_wiring(tmp_path: Path) -> None:
     report = metrics.report()
     assert report["frames_captured"] > 0 and report["frames_processed"] > 0
     assert report["latency_ms_p95"] is not None
+
+
+def test_unthrottled_lifts_only_the_throttle() -> None:
+    cfg = live.effective_runtime(live.LiveOptions(unthrottled=True), RuntimeConfig(target_fps=10))
+    assert cfg.target_fps == live.UNTHROTTLED_FPS
