@@ -3,9 +3,10 @@
     python scripts/replay.py --from-cache all --split test
 
 The settings are read from ``config/perception.yaml`` and ``config/runtime.yaml``; nothing is
-tuned here. ``reports/replay_test.json`` is written once: a second ``--split test`` run is refused
-while that file exists, unless ``--allow-repeat-test "<reason>"`` is given (the reason is recorded
-in the new report). The verdict uses the strict MATCH of ``harness/metrics.py`` only; the
+tuned here. ``reports/replay_test.json`` is written once, together with the marker
+``reports/.replay_test_done``: a second ``--split test`` run is refused while either file
+exists, unless ``--allow-repeat-test "<reason>"`` is given (the reason is recorded in the new
+report). The verdict uses the strict MATCH of ``harness/metrics.py`` only; the
 START-excluded count is reported for information and never changes a verdict.
 """
 
@@ -38,19 +39,33 @@ START_STEP = "start_pressed"
 
 ROOT = Path(__file__).resolve().parents[1]
 
+DEFAULT_REPORT_PATH = ROOT / "reports" / "replay_test.json"
+DEFAULT_MARKER_PATH = ROOT / "reports" / ".replay_test_done"
+"""A fixed marker, written (and committed) after a successful test replay. The guard looks at it
+as well as at the report, so choosing another ``--report`` path or deleting the report does not
+re-open the test split."""
+
 
 class RepeatTestRefused(Exception):
     """The test report already exists and no reason for a repeat was given."""
 
 
-def guard_repeat_test(report_path: Path | str, allow_repeat_reason: str | None) -> str | None:
-    """None for a first replay; the stripped reason for an allowed repeat; else refuse."""
-    if not Path(report_path).exists():
+def guard_repeat_test(
+    report_path: Path | str,
+    allow_repeat_reason: str | None,
+    marker_path: Path | str = DEFAULT_MARKER_PATH,
+) -> str | None:
+    """None for a first replay; the stripped reason for an allowed repeat; else refuse.
+
+    A replay counts as done when ``report_path`` exists **or** the fixed ``marker_path`` exists,
+    so the guard does not depend on which ``--report`` path the caller names."""
+    found = [str(p) for p in (report_path, marker_path) if Path(p).exists()]
+    if not found:
         return None
     reason = (allow_repeat_reason or "").strip()
     if not reason:
         raise RepeatTestRefused(
-            f"{report_path} already exists: the test split is replayed once; "
+            f"{' and '.join(found)} exist(s): the test split is replayed once; "
             'pass --allow-repeat-test "<reason>" to repeat it (the reason is recorded)'
         )
     return reason
@@ -187,9 +202,12 @@ def _sha(path: Path) -> str:
 
 
 def run_test_split(args: argparse.Namespace) -> int:
-    report_path = Path(getattr(args, "report", ROOT / "reports" / "replay_test.json"))
+    report_path = Path(getattr(args, "report", DEFAULT_REPORT_PATH))
+    marker_path = Path(getattr(args, "marker", DEFAULT_MARKER_PATH))
     try:
-        repeat_reason = guard_repeat_test(report_path, getattr(args, "allow_repeat_test", None))
+        repeat_reason = guard_repeat_test(
+            report_path, getattr(args, "allow_repeat_test", None), marker_path
+        )
     except RepeatTestRefused as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2
@@ -251,6 +269,12 @@ def run_test_split(args: argparse.Namespace) -> int:
         "note": "verdict uses the strict match only; start_excluded_match is information only",
     }
     report_path.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8", newline="\n")
+    marker_path.parent.mkdir(parents=True, exist_ok=True)
+    marker_path.write_text(
+        f"test split replayed once; report {report_path.name}; verdict {agg['verdict']}\n",
+        encoding="utf-8",
+        newline="\n",
+    )
     print(json.dumps(agg))
-    print(f"wrote {report_path}")
+    print(f"wrote {report_path} and {marker_path}")
     return 0

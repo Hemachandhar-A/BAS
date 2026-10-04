@@ -13,22 +13,57 @@ from harness.heldout import RepeatTestRefused, guard_repeat_test, run_test_split
 
 
 def test_guard_allows_the_first_test_replay(tmp_path: Path) -> None:
-    assert guard_repeat_test(tmp_path / "replay_test.json", None) is None
+    assert guard_repeat_test(tmp_path / "replay_test.json", None, tmp_path / ".done") is None
+
+
+def test_guard_refuses_on_the_marker_alone_whatever_the_report_path(tmp_path: Path) -> None:
+    marker = tmp_path / ".replay_test_done"
+    marker.write_text("done\n", encoding="utf-8")
+    other_report = tmp_path / "another_report.json"  # a different --report; it does not exist
+    with pytest.raises(RepeatTestRefused, match="replayed once"):
+        guard_repeat_test(other_report, None, marker)
+    assert guard_repeat_test(other_report, " operator error ", marker) == "operator error"
+
+
+def test_deleting_the_report_does_not_reopen_the_split(tmp_path: Path) -> None:
+    report, marker = tmp_path / "replay_test.json", tmp_path / ".replay_test_done"
+    report.write_text("{}", encoding="utf-8")
+    marker.write_text("done\n", encoding="utf-8")
+    report.unlink()
+    with pytest.raises(RepeatTestRefused):
+        guard_repeat_test(report, None, marker)
+
+
+def test_runner_refuses_on_the_marker_with_a_fresh_report_path(tmp_path: Path) -> None:
+    marker = tmp_path / ".replay_test_done"
+    marker.write_text("done\n", encoding="utf-8")
+    fresh = tmp_path / "fresh.json"
+    ns = argparse.Namespace(
+        split="test",
+        report=fresh,
+        marker=marker,
+        allow_repeat_test=None,
+        cache_dir=tmp_path / "no_such_dir",
+        experiment=tmp_path / "no_such_experiment.json",
+    )
+    assert run_test_split(ns) == 2
+    assert not fresh.exists()
 
 
 def test_guard_refuses_when_the_report_already_exists(tmp_path: Path) -> None:
     report = tmp_path / "replay_test.json"
     report.write_text("{}", encoding="utf-8")
-    with pytest.raises(RepeatTestRefused, match="already exists"):
-        guard_repeat_test(report, None)
+    with pytest.raises(RepeatTestRefused, match="replayed once"):
+        guard_repeat_test(report, None, tmp_path / ".done")
     with pytest.raises(RepeatTestRefused):
-        guard_repeat_test(report, "   ")
+        guard_repeat_test(report, "   ", tmp_path / ".done")
 
 
 def test_guard_with_a_reason_returns_it_for_the_new_report(tmp_path: Path) -> None:
     report = tmp_path / "replay_test.json"
     report.write_text("{}", encoding="utf-8")
-    assert guard_repeat_test(report, "  disk full during write  ") == "disk full during write"
+    reason = guard_repeat_test(report, "  disk full during write  ", tmp_path / ".done")
+    assert reason == "disk full during write"
 
 
 def test_runner_refuses_a_repeat_before_reading_anything(tmp_path: Path) -> None:
@@ -37,6 +72,7 @@ def test_runner_refuses_a_repeat_before_reading_anything(tmp_path: Path) -> None
     ns = argparse.Namespace(
         split="test",
         report=report,
+        marker=tmp_path / ".done",
         allow_repeat_test=None,
         cache_dir=tmp_path / "no_such_dir",
         experiment=tmp_path / "no_such_experiment.json",
@@ -50,9 +86,10 @@ def test_cli_routes_split_test_to_the_guard(tmp_path: Path) -> None:
 
     report = tmp_path / "replay_test.json"
     report.write_text("{}", encoding="utf-8")
-    assert main(["--from-cache", "all", "--split", "test", "--report", str(report)]) == 2
+    base = ["--split", "test", "--report", str(report), "--marker", str(tmp_path / ".done")]
+    assert main(["--from-cache", "all", *base]) == 2
     # a single run id with --split test is refused too
-    assert main(["--from-cache", "x002", "--split", "test", "--report", str(report)]) == 2
+    assert main(["--from-cache", "x002", *base]) == 2
     # the tuner still refuses the test split
     assert main(["--tune", "--split", "test"]) == 2
 
