@@ -10,8 +10,23 @@ a startup self-check in which every item is OK or FAIL with a reason (no passwor
     python scripts/demo.py --source clip.mp4     a file, or a stream URL, instead of a camera
     python scripts/demo.py --replay-run x016     play runs/x016/video.mp4 in REAL TIME through the
                                                  same live loop (the backup mode, remote judges)
+    python scripts/demo.py --playlist demo_videos   a folder of recorded clips, one after another
     python scripts/demo.py --check               only the self-check; exit 1 on any FAIL
     python scripts/demo.py --tts-test            speak "Audio check" through the real speaker path
+
+A file (--replay-run, --source FILE, --playlist) does not start by itself: the first frame is shown
+at once as a still preview, and the run and the voice start together when the dashboard asks
+(open the URL printed after READY, which ends in ?autostart=1) or when Start is pressed. Use
+--no-wait-for-dashboard (or --auto-start) to start at once: tests, soak, headless runs. The voice
+is held back by --speech-delay seconds (default 0.2) so it lines up with the frame on the screen.
+
+PLAYLIST (demo only). --playlist PATH is a folder of video files (.mp4 .avi .mov .mkv, in name
+order) or a text file with one path per line (relative paths are resolved against the file's
+folder). Every clip is a SEPARATE run through the same live loop (fresh perception, tracker and
+engine, a new run_id, its own log, its own run_completed); the last frame is held during
+--pause-between; the server, the dashboard and the voice stay up. DO NOT STITCH CLIPS INTO ONE
+FILE: the engine would treat it as one run and the second clip would be judged as the
+continuation of the first.
 
 TLS is switched on automatically when `python scripts/gen_cert.py` has written certs/cert.pem and
 certs/key.pem (or when tls_cert / tls_key are set in config/runtime.yaml); without it the server
@@ -44,6 +59,14 @@ def build_parser() -> argparse.ArgumentParser:
         help="a camera index (digits), a video file path or a stream URL (default: camera 0)",
     )
     src.add_argument(
+        "--playlist",
+        type=Path,
+        metavar="PATH",
+        help="a folder of video clips (name order) or a text file with one clip path per line;\n"
+        "each clip is its own run, played one after another (never stitch clips into one file).\n"
+        "A clip under runs/<test id>/ needs --allow-heldout",
+    )
+    src.add_argument(
         "--replay-run",
         metavar="RUN_ID",
         help="play runs/RUN_ID/video.mp4 in real time (paced by the frame times) through the\n"
@@ -69,13 +92,52 @@ def build_parser() -> argparse.ArgumentParser:
         dest="auto_start",
         action="store_true",
         default=None,
-        help="start the run at once (the default for --replay-run / a file)",
+        help="start the run at once, without waiting for the dashboard (see also\n"
+        "--no-wait-for-dashboard)",
     )
     auto.add_argument(
         "--no-auto-start",
         dest="auto_start",
         action="store_false",
-        help="wait for Start on the dashboard (the default for a camera)",
+        help="wait for Start on the dashboard (the default for a camera; for a file the first\n"
+        "frame is held until Start, see --no-wait-for-dashboard)",
+    )
+    flow = parser.add_argument_group("demo flow")
+    flow.add_argument(
+        "--no-wait-for-dashboard",
+        dest="wait_for_dashboard",
+        action="store_false",
+        help="do not hold on the first frame: start the run at once (tests, soak, headless runs)",
+    )
+    flow.add_argument(
+        "--speech-delay",
+        type=float,
+        default=0.2,
+        metavar="SECONDS",
+        help="hold each spoken cue this long so it lines up with the frame on the screen\n"
+        "(default 0.2; 0 disables). Tune by eye: raise it if the voice runs ahead of the video",
+    )
+    flow.add_argument(
+        "--pause-between",
+        type=float,
+        default=5.0,
+        metavar="SECONDS",
+        help="--playlist: how long the last frame is held between clips (default 5)",
+    )
+    flow.add_argument(
+        "--advance",
+        choices=("auto", "enter"),
+        default="auto",
+        help="--playlist: 'auto' starts the next clip after the pause; 'enter' waits for the\n"
+        "presenter to press Enter in this terminal (the pause is then ignored)",
+    )
+    flow.add_argument("--shuffle", action="store_true", help="--playlist: seeded shuffle")
+    flow.add_argument("--seed", type=int, default=0, help="--shuffle seed (default 0)")
+    flow.add_argument(
+        "--once", action="store_true", help="--playlist: stop after one pass (default: loop)"
+    )
+    flow.add_argument(
+        "--no-record", dest="record", action="store_false", help="write no recorder .avi file"
     )
     measure = parser.add_argument_group("measurement and soak (used by the S-I1 measurements)")
     measure.add_argument(
@@ -155,6 +217,15 @@ def main(argv: list[str] | None = None) -> int:
         tls=args.tls,
         port=args.port,
         check_only=args.check,
+        wait_for_dashboard=args.wait_for_dashboard,
+        speech_delay_s=args.speech_delay,
+        playlist=args.playlist,
+        pause_between_s=args.pause_between,
+        advance=args.advance,
+        shuffle=args.shuffle,
+        seed=args.seed,
+        once=args.once,
+        record=args.record,
     )
     return live.run_live(options, print)
 

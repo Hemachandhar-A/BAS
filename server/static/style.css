@@ -173,6 +173,23 @@ button:disabled {
   font-size: 0.9rem;
 }
 
+.banner {
+  margin: 0;
+  padding: 0.35rem 1rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  border-bottom: 1px solid var(--border);
+}
+
+.banner[hidden] {
+  display: none;
+}
+
+.banner-waiting { background: var(--warn); color: #fff; }
+.banner-running { background: var(--ok); color: #fff; }
+.banner-finished { background: var(--panel); color: var(--muted); }
+
 .error {
   margin: 0;
   padding: 0.5rem 1rem;

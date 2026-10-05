@@ -18,7 +18,16 @@
     completed_late: "Completed late",
   };
 
+  // ?autostart=1 (the demo URL): POST /api/run/start once, this long after the first video
+  // frame has loaded, and only if the run is idle at that moment.
+  var AUTOSTART_DELAY_MS = 500;
+  var autostartRequested = /[?&]autostart=1(&|$)/.test(window.location.search);
+  var autostartScheduled = false;
+  var autostartFired = false;
+
   var els = {
+    banner: document.getElementById("start-banner"),
+    video: document.getElementById("video"),
     runId: document.getElementById("run-id"),
     runState: document.getElementById("run-state"),
     feedOk: document.getElementById("feed-ok"),
@@ -105,6 +114,55 @@
 
     els.btnStart.disabled = status.run_state === "running";
     els.btnReset.disabled = status.run_state === "idle";
+    renderBanner(status.run_state);
+    // Fallback for browsers that fire no load event on a multipart stream: the first decoded
+    // frame gives the <img> a width.
+    if (els.video.naturalWidth > 0) {
+      onVideoLoaded();
+    }
+  }
+
+  function renderBanner(runState) {
+    if (runState === "running") {
+      setText(els.banner, "running");
+      els.banner.className = "banner banner-running";
+    } else if (runState === "idle") {
+      setText(els.banner, "waiting to start");
+      els.banner.className = "banner banner-waiting";
+    } else {
+      setText(els.banner, "run finished");
+      els.banner.className = "banner banner-finished";
+    }
+    els.banner.hidden = false;
+  }
+
+  function onVideoLoaded() {
+    if (!autostartRequested || autostartScheduled) {
+      return;
+    }
+    autostartScheduled = true;
+    window.setTimeout(autostart, AUTOSTART_DELAY_MS);
+  }
+
+  function autostart() {
+    // Once per page load, and only when the run is idle right now (a fresh status read, not the
+    // last poll): a page reloaded mid-run, or opened by a second viewer, never restarts it.
+    if (autostartFired) {
+      return;
+    }
+    autostartFired = true;
+    fetch("/api/status")
+      .then(function (response) {
+        return response.ok ? response.json() : null;
+      })
+      .then(function (status) {
+        if (status && status.run_state === "idle") {
+          postRunControl("/api/run/start", els.btnStart);
+        }
+      })
+      .catch(function () {
+        // the status poll shows the connection error; the page can still be started by hand
+      });
   }
 
   // Guards against out-of-order responses: if a slow poll resolves after a
@@ -171,6 +229,8 @@
   els.btnReset.addEventListener("click", function () {
     postRunControl("/api/run/reset", els.btnReset);
   });
+
+  els.video.addEventListener("load", onVideoLoaded);
 
   poll();
   setInterval(poll, POLL_MS);

@@ -17,9 +17,12 @@ import json
 import logging
 import multiprocessing as mp
 import os
+import random
+import re
 import socket
 import threading
 import time
+from collections import deque
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
@@ -481,11 +484,35 @@ class PrefetchedSource(_SourceWrapper):
         return self._inner.read()
 
 
+class StartGate:
+    """Closed until ``release()``: a ``PacedSource`` holding on its first frame waits for it."""
+
+    def __init__(self) -> None:
+        self._event = threading.Event()
+
+    @property
+    def released(self) -> bool:
+        return self._event.is_set()
+
+    def release(self) -> None:
+        self._event.set()
+
+    def wait(self, timeout: float) -> None:
+        """Sleeps up to ``timeout`` seconds, waking at once when the gate is released."""
+        self._event.wait(timeout)
+
+
 class PacedSource(_SourceWrapper):
     """Real-time pacing for a file replay: ``read()`` returns a frame no earlier than its ``t``
     after the first read, so alerts and speech arrive at the natural speed of the recording, like
     a camera. If the reader falls more than ``resync_after_s`` behind, the schedule is re-anchored
-    instead of delivering a burst."""
+    instead of delivering a burst.
+
+    With a ``gate`` the source first HOLDS on the clip's first frame: every ``read()`` returns that
+    same frame (same ``frame_id`` and ``t``, the clip does not advance), so the stream shows a
+    still preview at once and the inference thread skips the duplicates. When the gate is released
+    the clip plays from that frame's time: nothing of the recording is lost. ``waiting for
+    dashboard`` is logged when the hold begins and then once per ``wait_log_every_s``."""
 
     def __init__(
         self,
@@ -493,14 +520,44 @@ class PacedSource(_SourceWrapper):
         clock: Callable[[], float] = time.monotonic,
         sleep: Callable[[float], None] = time.sleep,
         resync_after_s: float = 1.0,
+        gate: StartGate | None = None,
+        hold_interval_s: float = 0.02,
+        wait_log_every_s: float = 10.0,
     ) -> None:
         super().__init__(inner)
         self._clock = clock
         self._sleep = sleep
         self._resync_after_s = resync_after_s
+        self._gate = gate
+        # The real sleep is replaced by the gate's own wait, so a release is felt at once.
+        self._hold_sleep = gate.wait if gate is not None and sleep is time.sleep else sleep
+        self._hold_interval_s = hold_interval_s
+        self._wait_log_every_s = wait_log_every_s
         self._origin: float | None = None  # clock() value at which t == 0
+        self._held: Frame | None = None
+        self._next_wait_log = 0.0
+
+    def _hold(self) -> Frame | None:
+        if self._held is None:
+            frame = self._inner.read()
+            if frame is None:
+                return None
+            self._held = frame
+            self._next_wait_log = self._clock()
+        else:
+            self._hold_sleep(self._hold_interval_s)
+        now = self._clock()
+        if now >= self._next_wait_log:
+            logger.info("waiting for dashboard (the run starts when the page asks for it)")
+            self._next_wait_log = now + self._wait_log_every_s
+        return self._held
 
     def read(self) -> Frame | None:
+        if self._gate is not None and not self._gate.released:
+            return self._hold()
+        if self._held is not None:  # released: the clip carries on from the held frame's time
+            self._origin = self._clock() - self._held.t
+            self._held = None
         frame = self._inner.read()
         if frame is None:
             return None
@@ -679,7 +736,29 @@ class MeteredSource(_SourceWrapper):
         return frame
 
 
-class MeteredRouter(Router):
+class ProgressRouter(Router):
+    """A ``Router`` that remembers the newest frame id it has been given, so the playlist can wait
+    until a clip's last frame has really been processed before it finishes the run."""
+
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        super().__init__(*args, **kwargs)
+        self._progress = threading.Condition()
+        self.last_frame_id = -1
+
+    def process_perception_frame(self, frame: PerceptionFrame) -> None:
+        try:
+            super().process_perception_frame(frame)
+        finally:
+            with self._progress:
+                self.last_frame_id = frame.frame_id
+                self._progress.notify_all()
+
+    def wait_processed(self, frame_id: int, timeout: float) -> bool:
+        with self._progress:
+            return self._progress.wait_for(lambda: self.last_frame_id >= frame_id, timeout)
+
+
+class MeteredRouter(ProgressRouter):
     """A ``Router`` that tells ``LiveMetrics`` when a frame's status has been updated."""
 
     def __init__(self, *args: Any, metrics: LiveMetrics, **kwargs: Any) -> None:
@@ -744,6 +823,589 @@ def check_source(
 # --------------------------------------------------------------------------------------------
 
 
+class EventTally:
+    """Collects the engine events of the current run (a callback for ``Router``); ``take()``
+    returns and clears them, ``summary()`` is the one-line version the playlist logs."""
+
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self._events: list[Any] = []
+
+    def __call__(self, event: Any) -> None:
+        with self._lock:
+            self._events.append(event)
+
+    def take(self) -> list[Any]:
+        with self._lock:
+            events, self._events = self._events, []
+        return events
+
+    @staticmethod
+    def summary(events: list[Any]) -> str:
+        confirmed = sum(1 for e in events if e.kind == "step_confirmed")
+        deviations = [e.deviation_type for e in events if e.kind == "deviation_detected"]
+        parts = [f"{confirmed} step_confirmed", f"{len(deviations)} deviation_detected"]
+        if deviations:
+            parts[-1] += " (" + ", ".join(str(d) for d in deviations) + ")"
+        completed = [e for e in events if e.kind == "run_completed"]
+        parts.append(f"run_completed: {completed[-1].speak!r}" if completed else "no run_completed")
+        return "; ".join(parts)
+
+
+class RunLabel:
+    """A ``run_id_factory`` for ``Router``: the normal ``live-<utc>-<random>`` id with the name of
+    the clip that run is for put in the middle (``live-<utc>-<clip>-<random>``), so the dashboard's
+    existing run id line shows which clip is playing. Same characters as before, no contract
+    change. ``set()`` is called before the run is armed."""
+
+    def __init__(self, label: str | None = None) -> None:
+        self._label = self._clean(label)
+
+    @staticmethod
+    def _clean(label: str | None) -> str:
+        return re.sub(r"[^A-Za-z0-9_]+", "_", label or "").strip("_")[:40]
+
+    def set(self, label: str | None) -> None:
+        self._label = self._clean(label)
+
+    def __call__(self) -> str:
+        from runtime.loop import default_run_id
+
+        run_id = default_run_id()
+        if not self._label:
+            return run_id
+        head, _, tail = run_id.rpartition("-")
+        return f"{head}-{self._label}-{tail}"
+
+
+class NullRecorder:
+    """``--no-record``: accepts the recorder calls and writes nothing."""
+
+    def __init__(self, path: Path | str, fps: float) -> None:
+        self.path = Path(path)
+
+    def open(self) -> None:
+        pass
+
+    def enqueue(self, frame: Frame) -> None:
+        pass
+
+    def close(self) -> None:
+        pass
+
+
+class LockedPerception:
+    """Serialises ``process`` and ``reset`` so the playlist can reset the pipeline between clips
+    while the inference thread is alive."""
+
+    def __init__(self, inner: Any) -> None:
+        self._inner = inner
+        self._lock = threading.Lock()
+        self.model_stamp = inner.model_stamp
+
+    def process(self, frame: Frame) -> PerceptionFrame:
+        with self._lock:
+            return self._inner.process(frame)
+
+    def reset(self) -> None:
+        with self._lock:
+            self._inner.reset()
+
+
+# --- speech alignment ------------------------------------------------------------------------
+
+
+class DelayedSpeaker:
+    """A ``Speaker`` that holds each utterance for ``delay_s`` before handing it to ``inner``, so
+    the voice lines up with the frame the browser shows (the video reaches the screen later than
+    the event is decided). Order and priority are those of ``inner``: items are released in FIFO
+    order, an ``alert`` first discards the older utterances still waiting and, once released,
+    interrupts exactly as ``inner`` does. ``say`` never blocks and never raises. ``close`` stops
+    the timer thread, hands whatever is still waiting to ``inner`` in order (nothing is lost),
+    then closes ``inner``.
+
+    ``clock`` is injectable; with ``autostart=False`` no thread runs and the test calls ``pump()``
+    after moving its fake clock. ``delay_s <= 0`` passes every call straight through."""
+
+    def __init__(
+        self,
+        inner: Any,
+        delay_s: float,
+        clock: Callable[[], float] = time.monotonic,
+        autostart: bool = True,
+    ) -> None:
+        self._inner = inner
+        self._delay_s = delay_s
+        self._clock = clock
+        self._cond = threading.Condition()
+        self._pending: deque[tuple[float, str, str]] = deque()
+        self._closed = False
+        self._thread: threading.Thread | None = None
+        if autostart and delay_s > 0:
+            self._thread = threading.Thread(target=self._run, name="speech-delay", daemon=True)
+            self._thread.start()
+
+    def say(self, text: str, priority: str) -> None:
+        try:
+            if self._closed:
+                return
+            if self._delay_s <= 0:
+                self._inner.say(text, priority)
+                return
+            with self._cond:
+                if priority == "alert":
+                    self._pending.clear()
+                self._pending.append((self._clock() + self._delay_s, text, priority))
+                self._cond.notify()
+        except Exception:
+            logger.warning("DelayedSpeaker.say failed, dropping utterance", exc_info=True)
+
+    def pump(self) -> int:
+        """Hands every utterance that is due to ``inner``; returns how many."""
+        released = 0
+        while True:
+            with self._cond:
+                if not self._pending or self._pending[0][0] > self._clock():
+                    return released
+                _, text, priority = self._pending.popleft()
+            self._release(text, priority)
+            released += 1
+
+    def _release(self, text: str, priority: str) -> None:
+        try:
+            self._inner.say(text, priority)
+        except Exception:
+            logger.warning("DelayedSpeaker: inner say failed, dropping utterance", exc_info=True)
+
+    def _run(self) -> None:
+        while True:
+            with self._cond:
+                while not self._closed:
+                    if not self._pending:
+                        self._cond.wait()
+                        continue
+                    wait = self._pending[0][0] - self._clock()
+                    if wait <= 0:
+                        break
+                    self._cond.wait(wait)
+                if self._closed:
+                    return
+            self.pump()
+
+    def close(self) -> None:
+        with self._cond:
+            if self._closed:
+                return
+            self._closed = True
+            self._cond.notify_all()
+        if self._thread is not None:
+            self._thread.join(timeout=2.0)
+        with self._cond:
+            leftover, self._pending = list(self._pending), deque()
+        for _, text, priority in leftover:
+            self._release(text, priority)
+        try:
+            self._inner.close()
+        except Exception:
+            logger.warning("DelayedSpeaker: inner close failed", exc_info=True)
+
+
+# --- playlist (demo only) ---------------------------------------------------------------------
+
+VIDEO_SUFFIXES = (".mp4", ".avi", ".mov", ".mkv")
+
+
+def parse_playlist(
+    path: Path | str,
+    *,
+    runs_dir: Path | str = ROOT / "runs",
+    allow_heldout: bool = False,
+    warn: Callable[[str], None] = lambda message: None,
+) -> list[Path]:
+    """The clips of a playlist, in order. ``path`` is a folder (the video files in name order) or
+    a text file (one path per line, ``#`` comments and blank lines ignored, a relative path is
+    resolved against the file's folder). A listed file that is missing is skipped with a warning;
+    an empty result or a clip of a test-split run (without ``allow_heldout``) is refused."""
+    source = Path(path)
+    if source.is_dir():
+        clips = sorted(
+            (p for p in source.iterdir() if p.is_file() and p.suffix.lower() in VIDEO_SUFFIXES),
+            key=lambda p: p.name.casefold(),
+        )
+    elif source.is_file():
+        clips = []
+        for raw in source.read_text(encoding="utf-8-sig").splitlines():
+            line = raw.strip()
+            if not line or line.startswith("#"):
+                continue
+            clip = Path(line)
+            clip = clip if clip.is_absolute() else source.parent / clip
+            if clip.is_file():
+                clips.append(clip)
+            else:
+                warn(f"playlist: skipping {line!r}: file not found")
+    else:
+        raise StartupRefused(f"playlist not found: {source}")
+    if not clips:
+        raise StartupRefused(f"the playlist {source} lists no video files")
+    for clip in clips:
+        resolve_source(str(clip), None, runs_dir=runs_dir, allow_heldout=allow_heldout)
+    return clips
+
+
+def order_clips(clips: list[Path], *, shuffle: bool, seed: int) -> list[Path]:
+    """Name order, or a seeded shuffle (the same seed gives the same order)."""
+    ordered = list(clips)
+    if shuffle:
+        random.Random(seed).shuffle(ordered)
+    return ordered
+
+
+def usable_clips(
+    clips: list[Path], opener: Opener, warn: Callable[[str], None] = lambda message: None
+) -> list[Path]:
+    """Drops the clips that cannot be opened or give no frame (a warning each); refuses when none
+    is left."""
+    good: list[Path] = []
+    for clip in clips:
+        try:
+            src = opener(str(clip))
+        except Exception as exc:
+            warn(f"playlist: skipping {clip.name}: cannot open ({type(exc).__name__}: {exc})")
+            continue
+        try:
+            frame = None
+            for _ in range(20):
+                frame = src.read()
+                if frame is not None or src.exhausted:
+                    break
+        finally:
+            src.close()
+        if frame is None:
+            warn(f"playlist: skipping {clip.name}: no readable frame")
+            continue
+        good.append(clip)
+    if not good:
+        raise StartupRefused("no clip of the playlist can be opened")
+    return good
+
+
+class PlaylistSource:
+    """A ``FrameSource`` that plays a list of clips one after another through ONE live loop (never
+    stitched into one file: every clip is its own run). Per clip it holds on the first frame until
+    the controller releases ``gate`` (a still preview), plays it in real time, then holds the last
+    frame until the controller calls ``advance()``. Frame ids carry on across clips (the inference
+    thread skips repeated ids); ``t`` restarts at 0 for each clip, as in a recorded run.
+
+    ``on_new_clip(index, path)`` runs on the capture thread right before a new clip's first frame
+    is emitted: the controller resets the perception pipeline there. ``pacer`` builds the paced
+    reader for an opened clip (tests inject one without waiting)."""
+
+    def __init__(
+        self,
+        clips: list[Path],
+        *,
+        opener: Opener | None = None,
+        pacer: Callable[[FrameSource, StartGate], FrameSource] | None = None,
+        on_new_clip: Callable[[int, Path], None] | None = None,
+        loop: bool = True,
+        hold_interval_s: float = 0.05,
+        sleep: Callable[[float], None] = time.sleep,
+    ) -> None:
+        if not clips:
+            raise StartupRefused("the playlist is empty")
+        self.clips = list(clips)
+        self._opener = opener or _default_opener
+        self._pacer = pacer or (lambda inner, gate: PacedSource(inner, gate=gate))
+        self._on_new_clip = on_new_clip
+        self._loop = loop
+        self._hold_interval_s = hold_interval_s
+        self._sleep = sleep
+        self.clip_index = -1
+        self.gate = StartGate()
+        self.preview_ready = threading.Event()
+        self.ended = threading.Event()
+        self.first_frame_id = -1
+        self.last_frame_id = -1
+        self._paced: FrameSource | None = None
+        self._phase = "switching"
+        self._target = 0
+        self._id_offset = 0
+        self._last_out: Frame | None = None
+        self._done = False
+        self._lock = threading.Lock()
+
+    @property
+    def fps(self) -> float | None:
+        return self._paced.fps if self._paced is not None else None
+
+    @property
+    def exhausted(self) -> bool:
+        return self._done
+
+    @property
+    def clip_name(self) -> str:
+        return self.clips[self.clip_index].name if self.clip_index >= 0 else ""
+
+    def next_index(self) -> int | None:
+        """The clip ``advance()`` would play next; ``None`` after the last one when not looping."""
+        nxt = self.clip_index + 1
+        if nxt < len(self.clips):
+            return nxt
+        return 0 if self._loop else None
+
+    def advance(self) -> bool:
+        """Controller: switch to the next clip; ``False`` (and the source ends) after the last
+        clip when not looping."""
+        nxt = self.next_index()
+        if nxt is None:
+            self.finish()
+            return False
+        self.preview_ready.clear()
+        self.ended.clear()
+        self.gate = StartGate()
+        with self._lock:
+            self._target = nxt
+            self._phase = "switching"
+        return True
+
+    def finish(self) -> None:
+        self._done = True
+
+    def close(self) -> None:
+        if self._paced is not None:
+            self._paced.close()
+
+    def _open(self, index: int) -> bool:
+        """Capture thread: opens the first playable clip at or after ``index`` (a failing one is
+        skipped with a warning). ``False`` when none opens."""
+        for step in range(len(self.clips)):
+            idx = index + step
+            if idx >= len(self.clips):
+                if not self._loop:
+                    break
+                idx %= len(self.clips)
+            path = self.clips[idx]
+            try:
+                inner = self._opener(str(path))
+            except Exception as exc:
+                logger.warning("playlist: cannot open %s: %s", path.name, exc)
+                continue
+            if self._paced is not None:
+                self._paced.close()
+            if self._on_new_clip is not None:
+                self._on_new_clip(idx, path)
+            self._id_offset = self._last_out.frame_id + 1 if self._last_out is not None else 0
+            self.clip_index = idx
+            gate = self.gate
+            self._paced = self._pacer(inner, gate)
+            self._phase = "playing"
+            return True
+        return False
+
+    def read(self) -> Frame | None:
+        if self._done:
+            return None
+        with self._lock:
+            switching, target = self._phase == "switching", self._target
+        if switching and not self._open(target):
+            self._done = True
+            return None
+        if self._phase == "ended":
+            self._sleep(self._hold_interval_s)
+            return self._last_out
+        assert self._paced is not None
+        frame = self._paced.read()
+        if frame is None:
+            if not self._paced.exhausted:
+                return None
+            if not self.preview_ready.is_set():  # an empty clip: move on
+                logger.warning("playlist: %s gave no frame, skipping", self.clip_name)
+                with self._lock:
+                    self._target = (self.clip_index + 1) % len(self.clips)
+                    self._phase = "switching"
+                return None
+            self.last_frame_id = self._last_out.frame_id if self._last_out else -1
+            self._phase = "ended"
+            self.ended.set()
+            return self._last_out
+        out = Frame(frame_id=frame.frame_id + self._id_offset, t=frame.t, image=frame.image)
+        if not self.preview_ready.is_set():
+            self.first_frame_id = out.frame_id
+            self._last_out = out
+            self.preview_ready.set()
+        self._last_out = out
+        return out
+
+
+def release_gate_when_running(
+    router: Any,
+    gate_of: Callable[[], StartGate],
+    stop: threading.Event,
+    *,
+    poll_s: float = 0.005,
+    sleep: Callable[[float], None] = time.sleep,
+) -> bool:
+    """Polls the status store (``router.run_state``, no server change) and releases the gate the
+    moment the run is ``running`` (the dashboard's POST /api/run/start). ``False`` if ``stop``."""
+    while not stop.is_set():
+        if router.run_state == "running":
+            gate_of().release()
+            return True
+        sleep(poll_s)
+    return False
+
+
+class PlaylistController:
+    """Runs the clips of a ``PlaylistSource`` one after another on a thread (``run(stop)``).
+
+    Per clip: wait for the first frame to be on screen (the preview), start the run and release
+    the gate together (the first clip waits for the dashboard's POST instead, when
+    ``wait_for_dashboard``), wait until the clip's last frame has been processed, finish the run
+    (``run_completed`` as the engine decides), hold the last frame for ``pause_between`` seconds
+    (or until Enter with ``advance="enter"``), then start the next clip. One line per transition
+    goes to ``out``. The server, the dashboard session and the speaker are never touched."""
+
+    def __init__(
+        self,
+        system: LiveSystem,
+        source: PlaylistSource,
+        *,
+        label: RunLabel | None = None,
+        pause_between: float = 5.0,
+        advance: str = "auto",
+        once: bool = False,
+        wait_for_dashboard: bool = True,
+        input_fn: Callable[[], str] = input,
+        out: Callable[[str], None] = lambda line: None,
+        clock: Callable[[], float] = time.monotonic,
+        sleep: Callable[[float], None] = time.sleep,
+        poll_s: float = 0.02,
+        settle_timeout_s: float = 5.0,
+    ) -> None:
+        self.system = system
+        self.source = source
+        self.label = label
+        self.pause_between = pause_between
+        self.advance = advance
+        self.once = once
+        self.wait_for_dashboard = wait_for_dashboard
+        self._input = input_fn
+        self._out = out
+        self._clock = clock
+        self._sleep = sleep
+        self._poll_s = poll_s
+        self._settle_timeout_s = settle_timeout_s
+        self.reason: str | None = None
+        self.clips_played = 0
+
+    def finished(self) -> str | None:
+        return self.reason
+
+    def start_thread(self, stop: threading.Event) -> threading.Thread:
+        thread = threading.Thread(target=self.run, args=(stop,), name="playlist", daemon=True)
+        thread.start()
+        return thread
+
+    def _wait_for(self, predicate: Callable[[], bool], stop: threading.Event) -> bool:
+        while not predicate():
+            if stop.is_set() or self.system.loop.fatal_error is not None:
+                return False
+            self._sleep(self._poll_s)
+        return True
+
+    def run(self, stop: threading.Event) -> None:
+        try:
+            self._run(stop)
+        except Exception:
+            logger.exception("playlist controller failed")
+            self.reason = "fatal error"
+        finally:
+            if self.reason is None:
+                self.reason = "stopped"
+
+    def _run(self, stop: threading.Event) -> None:
+        source, system = self.source, self.system
+        first = True
+        while not stop.is_set():
+            if not self._wait_for(source.preview_ready.is_set, stop):
+                return
+            if not self._wait_for(
+                lambda: (f := system.loop.frame_store.get()) is not None
+                and f.frame_id == source.first_frame_id,
+                stop,
+            ):
+                return
+            run_id = self._begin(first, stop)
+            if run_id is None:
+                return
+            first = False
+            name, index = source.clip_name, source.clip_index
+            self._out(
+                f"clip {index + 1}/{len(source.clips)} {name}: run {run_id} started"
+                f" (t=0, {source.fps or 0:.1f} fps)"
+            )
+            if not self._wait_for(source.ended.is_set, stop):
+                return
+            if not system.router.wait_processed(source.last_frame_id, self._settle_timeout_s):
+                logger.warning("playlist: last frame of %s not processed in time", name)
+            nxt = source.next_index()
+            if self.label is not None and nxt is not None:
+                self.label.set(source.clips[nxt].stem)
+            system.loop.reset_run(system.run_clock())
+            events = system.tally.take()
+            self.clips_played += 1
+            self._out(
+                f"clip {index + 1}/{len(source.clips)} {name}: run {run_id} finished: "
+                f"{EventTally.summary(events)}"
+            )
+            if nxt is None:  # --once: the source was built without looping
+                self._out("playlist finished")
+                source.finish()
+                self.reason = "playlist finished"
+                return
+            if not self._pause(stop):
+                return
+            source.advance()
+
+    def _begin(self, first: bool, stop: threading.Event) -> str | None:
+        system, source = self.system, self.source
+        system.tally.take()
+        if first and self.wait_for_dashboard:
+            if not self._wait_for(lambda: system.router.run_state == "running", stop):
+                return None
+            run_id = system.router.run_id or ""
+        else:
+            if system.router.run_state == "running":
+                # a page refreshed with ?autostart=1 during the pause started a run on the held
+                # frame: finish it (logged as aborted) and start properly with the clip
+                logger.warning("playlist: a run was started during the pause; finishing it")
+                system.loop.reset_run(system.run_clock())
+                system.tally.take()
+            run_id = system.loop.start_run(system.run_clock())
+        source.gate.release()
+        return run_id
+
+    def _pause(self, stop: threading.Event) -> bool:
+        if self.advance == "enter":
+            self._out("press Enter in this terminal for the next clip")
+            pressed = threading.Event()
+
+            def reader() -> None:
+                try:
+                    self._input()
+                except EOFError:
+                    logger.warning("playlist: no terminal input; continuing after the pause")
+                    self._sleep(self.pause_between)
+                pressed.set()
+
+            threading.Thread(target=reader, name="playlist-enter", daemon=True).start()
+            return self._wait_for(pressed.is_set, stop)
+        deadline = self._clock() + self.pause_between
+        self._out(f"holding the last frame for {self.pause_between:g} s")
+        return self._wait_for(lambda: self._clock() >= deadline, stop)
+
+
 def frame_clock(loop: Any) -> Callable[[], float]:
     """The ``t`` handed to run start / reset: the newest frame's own ``t`` (0.0 before the first
     frame), so ``run_started`` and an aborted run's ``run_completed`` carry video time rather
@@ -783,9 +1445,11 @@ class LiveSystem:
         password: str,
         metrics: LiveMetrics | None = None,
         server_factory: Callable[[Any, RuntimeConfig], Any] | None = None,
+        recorder_factory: Callable[[Path, float], Any] | None = None,
+        run_id_factory: Callable[[], str] | None = None,
     ) -> None:
         from engine.sequence import SequenceEngine
-        from runtime.loop import RuntimeLoop
+        from runtime.loop import RuntimeLoop, default_run_id
         from server.app import RecentAlerts, create_app
         from state.tracker import StateTracker
 
@@ -801,6 +1465,12 @@ class LiveSystem:
         tracker = StateTracker(experiment, settings.perception)
         engine = SequenceEngine(experiment, settings.runtime)
         self.recent_alerts = RecentAlerts(cap=20)
+        self.tally = EventTally()
+
+        def on_engine_event(event: Any) -> None:
+            self.recent_alerts(event)
+            self.tally(event)
+
         router_args = (
             experiment,
             settings.runtime,
@@ -809,19 +1479,22 @@ class LiveSystem:
             speaker,
             settings.runtime.log_dir,
         )
+        router_kwargs: dict[str, Any] = {
+            "on_engine_event": on_engine_event,
+            "run_id_factory": run_id_factory or default_run_id,
+        }
+        self.router: ProgressRouter
         if metrics is not None:
-            self.router: Router = MeteredRouter(
-                *router_args, metrics=metrics, on_engine_event=self.recent_alerts
-            )
+            self.router = MeteredRouter(*router_args, metrics=metrics, **router_kwargs)
         else:
-            self.router = Router(*router_args, on_engine_event=self.recent_alerts)
+            self.router = ProgressRouter(*router_args, **router_kwargs)
         self.loop = RuntimeLoop(
             source,
             perception,
             self.router,
             settings.runtime,
             settings.runtime.video_dir,
-            recorder_factory=recorder_factory_for(source),
+            recorder_factory=recorder_factory or recorder_factory_for(source),
         )
         self.run_clock = frame_clock(self.loop)
         self.app = create_app(
@@ -864,15 +1537,19 @@ class LiveSystem:
         sample_every_s: float = 30.0,
         poll_s: float = 0.25,
         clock: Callable[[], float] = time.monotonic,
+        until: Callable[[], str | None] | None = None,
     ) -> str:
         """Blocks until something ends the session and says what: ``stopped`` (the event),
-        ``duration``, ``source finished`` (only with ``exit_when_done``), or ``fatal error``."""
+        ``duration``, ``source finished`` (only with ``exit_when_done``), ``fatal error``, or the
+        reason ``until()`` returns (the playlist controller's "playlist finished")."""
         started = clock()
         next_sample = started
         while True:
             now = clock()
             if self.loop.fatal_error is not None:
                 return "fatal error"
+            if until is not None and (reason := until()) is not None:
+                return reason
             if stop_event is not None and stop_event.is_set():
                 return "stopped"
             if duration_s is not None and now - started >= duration_s:
@@ -885,9 +1562,9 @@ class LiveSystem:
             time.sleep(poll_s)
 
     def shutdown(self) -> None:
-        """Every step runs even if an earlier one fails: the server stops, a running run is
-        finished (``run_completed`` aborted, recorder file closed), the threads join, the source
-        closes, the TTS process stops. Idempotent."""
+        """Every step runs even if an earlier one fails: the server stops, the threads join (the
+        recorder file closes, the source closes), a running run is finished (``run_completed``
+        aborted), the TTS process stops. Idempotent."""
         if self._stopped:
             return
         self._stopped = True
@@ -904,14 +1581,17 @@ class LiveSystem:
                 self.server.server_close()
             except Exception:
                 logger.warning("live: error stopping the HTTP server", exc_info=True)
-        try:
-            self.loop.reset_run(self.run_clock())
-        except Exception:
-            logger.warning("live: reset_run failed during shutdown", exc_info=True)
+        # The threads stop first: with the inference thread still running, a frame could be
+        # logged after run_completed. The newest frame stays in the store, so run_clock() still
+        # gives the aborted run's end time.
         try:
             self.loop.stop()
         except Exception:
             logger.warning("live: loop.stop failed", exc_info=True)
+        try:
+            self.loop.reset_run(self.run_clock())
+        except Exception:
+            logger.warning("live: reset_run failed during shutdown", exc_info=True)
         try:
             self.speaker.close()
         except Exception:
@@ -955,6 +1635,15 @@ class LiveOptions:
     metrics_out: Path | None = None
     sample_every_s: float = 30.0
     tls: str = "auto"  # auto | on | off
+    wait_for_dashboard: bool = True  # demo + file/playlist: hold on the first frame until Start
+    speech_delay_s: float = 0.2  # DelayedSpeaker; 0 disables
+    playlist: Path | None = None  # demo only: a folder of clips or a text file of paths
+    pause_between_s: float = 5.0
+    advance: str = "auto"  # auto | enter
+    shuffle: bool = False
+    seed: int = 0
+    once: bool = False
+    record: bool = True
     port: int | None = None
     check_only: bool = False
     runtime_path: Path = ROOT / "config" / "runtime.yaml"
@@ -991,8 +1680,10 @@ def build_source(
     first: FrameSource | None,
     metrics: LiveMetrics | None,
     on_loop: Callable[[int], None] | None,
+    gate: StartGate | None = None,
 ) -> FrameSource:
-    """Wraps the opened source: looping (the soak), real-time pacing (a file), metering."""
+    """Wraps the opened source: looping (the soak), real-time pacing (a file, held on its first
+    frame until ``gate`` is released when there is one), metering."""
     is_file = not source_arg.isdigit()
     src: FrameSource
     if options.loop_source:
@@ -1005,7 +1696,7 @@ def build_source(
         assert first is not None
         src = first
     if is_file and not options.max_speed:
-        src = PacedSource(src)
+        src = PacedSource(src, gate=gate)
     if metrics is not None:
         src = MeteredSource(src, metrics)
     return src
@@ -1016,16 +1707,36 @@ def run_live(
     out: Callable[[str], None],
     *,
     stop_event: threading.Event | None = None,
+    speaker_factory: Callable[[RuntimeConfig], Any] | None = None,
 ) -> int:
     """Returns the process exit code. All user-facing text goes through ``out``."""
+    clips: list[Path] | None = None
     try:
-        source_arg = resolve_source(
-            options.source,
-            options.replay_run,
-            default_source="0",
-            runs_dir=options.runs_dir,
-            allow_heldout=options.allow_heldout,
-        )
+        if options.playlist is not None:
+            if options.source or options.replay_run or options.loop_source:
+                raise StartupRefused("--playlist replaces --source, --replay-run and --loop")
+            if options.advance not in ("auto", "enter"):
+                raise StartupRefused("--advance is 'auto' or 'enter'")
+            clips = order_clips(
+                parse_playlist(
+                    options.playlist,
+                    runs_dir=options.runs_dir,
+                    allow_heldout=options.allow_heldout,
+                    warn=lambda message: out(f"warning: {message}"),
+                ),
+                shuffle=options.shuffle,
+                seed=options.seed,
+            )
+            clips = usable_clips(clips, _default_opener, lambda m: out(f"warning: {m}"))
+            source_arg = str(clips[0])
+        else:
+            source_arg = resolve_source(
+                options.source,
+                options.replay_run,
+                default_source="0",
+                runs_dir=options.runs_dir,
+                allow_heldout=options.allow_heldout,
+            )
     except StartupRefused as exc:
         out(f"refused: {exc}")
         return 2
@@ -1117,41 +1828,120 @@ def run_live(
     metrics = LiveMetrics() if options.metrics_out is not None else None
     system: LiveSystem | None = None
     restart: list[Callable[[], Any]] = []
+    halt = threading.Event()  # ends the gate watcher / playlist controller before the shutdown
+    helper: threading.Thread | None = None
     try:
-        wrapped = build_source(
-            source_arg,
-            options,
-            first,
-            metrics,
-            on_loop=lambda n: restart[0]() if restart else None,
+        is_file = not source_arg.isdigit()
+        # The gate: demo mode with a file (a playlist always plays files). --auto-start asks for
+        # an immediate start, --max-speed is an unpaced measurement: neither waits.
+        gated = (
+            options.mode == "demo"
+            and is_file
+            and options.wait_for_dashboard
+            and not options.max_speed
+            and options.auto_start is not True
         )
+        gate = StartGate() if gated and clips is None else None
+        controller: PlaylistController | None = None
+        label = RunLabel(clips[0].stem) if clips else None
+        run_id_factory: Callable[[], str] | None = label
+        speaker = (speaker_factory or _make_speaker)(runtime)
+        if options.speech_delay_s > 0:
+            speaker = DelayedSpeaker(speaker, options.speech_delay_s)
+        recorder_factory = None if options.record else NullRecorder
+        if clips is not None:
+            if first is not None:
+                first.close()
+            locked = LockedPerception(perception)
+            opened: list[int] = []
+
+            def new_clip(index: int, path: Path) -> None:
+                if opened:  # the pipeline is fresh for the first clip
+                    locked.reset()
+                opened.append(index)
+
+            playlist = PlaylistSource(clips, on_new_clip=new_clip, loop=not options.once)
+            wrapped: FrameSource = MeteredSource(playlist, metrics) if metrics else playlist
+            perception = locked
+        else:
+            playlist = None
+            wrapped = build_source(
+                source_arg,
+                options,
+                first,
+                metrics,
+                on_loop=lambda n: restart[0]() if restart else None,
+                gate=gate,
+            )
         system = LiveSystem(
             settings=settings,
             perception=perception,
             source=wrapped,
-            speaker=_make_speaker(runtime),
+            speaker=speaker,
             username=creds[0],
             password=creds[1],
             metrics=metrics,
+            recorder_factory=recorder_factory,
+            run_id_factory=run_id_factory,
         )
         restart.append(system.restart_run)
         auto_start = options.auto_start
         if auto_start is None:
-            auto_start = not source_arg.isdigit()
+            auto_start = is_file and not gated
+        if gated or playlist is not None:
+            auto_start = False  # the dashboard (gate) or the playlist controller starts the run
+        if playlist is not None:
+            controller = PlaylistController(
+                system,
+                playlist,
+                label=label,
+                pause_between=options.pause_between_s,
+                advance=options.advance,
+                once=options.once,
+                wait_for_dashboard=gated,
+                out=out,
+            )
         system.start(auto_start=auto_start)
-        realtime = not source_arg.isdigit() and not options.max_speed
-        out(f"READY  {public_url(runtime)}")
+        if controller is not None:
+            helper = controller.start_thread(halt)
+        elif gate is not None:
+            helper = threading.Thread(
+                target=release_gate_when_running,
+                args=(system.router, lambda: gate, halt),
+                name="gate-release",
+                daemon=True,
+            )
+            helper.start()
+        realtime = is_file and not options.max_speed
+        url = public_url(runtime) + ("?autostart=1" if gated else "")
+        out(f"READY  {url}")
         out(f"  login:   credentials from the {credentials_origin(cred_item)} (values not shown)")
         out(f"  logs:    {runtime.log_dir}")
-        out(f"  video:   {runtime.video_dir}")
-        out(f"  source:  {source_arg}" + ("  (played in real time)" if realtime else ""))
-        start_note = "run started automatically" if auto_start else "press Start on the dashboard"
+        out(f"  video:   {runtime.video_dir}" if options.record else "  video:   not recorded")
+        what = (
+            f"playlist {options.playlist} ({len(clips or [])} clips)"
+            if clips is not None
+            else source_arg
+        )
+        out(f"  source:  {what}" + ("  (played in real time)" if realtime else ""))
+        if gated:
+            start_note = (
+                "the first frame shows at once; the run and the voice start when the page asks"
+                " (?autostart=1) or when you press Start"
+            )
+        elif auto_start:
+            start_note = "run started automatically"
+        elif playlist is not None:
+            start_note = "the playlist starts at once"
+        else:
+            start_note = "press Start on the dashboard"
         out(f"  {start_note}; Ctrl+C stops cleanly")
         reason = system.wait(
             duration_s=options.duration_s,
             exit_when_done=options.exit_when_done,
             stop_event=stop_event,
             sample_every_s=options.sample_every_s,
+            until=controller.finished if controller is not None else None,
         )
         out(f"stopping ({reason})")
         return 1 if reason == "fatal error" else 0
@@ -1163,6 +1953,9 @@ def run_live(
         out(f"failed: {type(exc).__name__}: {exc}")
         return 1
     finally:
+        halt.set()
+        if helper is not None:
+            helper.join(timeout=5.0)
         if system is not None:
             system.shutdown()
         elif first is not None:
