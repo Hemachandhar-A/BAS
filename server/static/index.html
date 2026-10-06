@@ -3,54 +3,117 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>BAS Dashboard</title>
+<title>BAS Experiment Monitor</title>
 <style>/*__STYLE_CSS__*/</style>
 </head>
 <body>
 <!--
-  Single operator-facing page (essential-features.md #12): live feed,
-  current/next step, step list with status chips, alert history, run
-  start/reset. Reference display only -- voice is the primary channel
-  (F8). No CDN, no web fonts, no non-local resources: everything on this
-  page is inlined at server start from style.css/app.js (server/app.py's
-  _render_index), so the URL map stays exactly API_ROUTES.
+  Single operator-facing page (essential-features.md #12): live feed, next action, step list,
+  event log, run start/reset. Reference display only -- voice is the primary channel (F8). No
+  CDN, no web fonts, no non-local resources: everything on this page is inlined at server start
+  from style.css/app.js (server/app.py's _render_index), so the URL map stays exactly API_ROUTES.
+  Every id below is read by app.js; every text the server supplies is written with textContent.
+  Icons are <use> references to the sprite below (no xmlns needed in HTML).
 -->
-<header class="topbar">
-  <h1>BAS -- Sample Transfer</h1>
-  <dl class="status-line" id="status-line">
-    <div><dt>Run</dt><dd id="run-id">--</dd></div>
-    <div><dt>State</dt><dd id="run-state">--</dd></div>
-    <div><dt>Feed</dt><dd id="feed-ok">--</dd></div>
-    <div><dt>FPS</dt><dd id="fps">--</dd></div>
-  </dl>
-  <div class="controls">
-    <button id="btn-start" type="button">Start</button>
-    <button id="btn-reset" type="button">Reset</button>
+<svg class="sprite" id="icon-sprite" aria-hidden="true" focusable="false" width="0" height="0">
+  <symbol id="i-check" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"></polyline></symbol>
+  <symbol id="i-circle" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"></circle></symbol>
+  <symbol id="i-dot" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"></circle></symbol>
+  <symbol id="i-skip" viewBox="0 0 24 24"><polygon points="5 4 15 12 5 20 5 4"></polygon><line x1="19" y1="5" x2="19" y2="19"></line></symbol>
+  <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></symbol>
+  <symbol id="i-warn" viewBox="0 0 24 24"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></symbol>
+  <symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></symbol>
+  <symbol id="i-speaker" viewBox="0 0 24 24"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon><path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"></path></symbol>
+  <symbol id="i-speaker-sm" viewBox="0 0 24 24"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon><path d="M15.54 8.46a5 5 0 0 1 0 7.07"></path></symbol>
+  <symbol id="i-camoff" viewBox="0 0 24 24"><line x1="1" y1="1" x2="23" y2="23"></line><path d="M21 21H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h3m3-3h6l2 3h4a2 2 0 0 1 2 2v9.34m-7.72-2.06a4 4 0 1 1-5.56-5.56"></path></symbol>
+  <symbol id="i-play" viewBox="0 0 24 24"><polygon points="5 3 19 12 5 21 5 3"></polygon></symbol>
+  <symbol id="i-reset" viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path><path d="M3 3v5h5"></path></symbol>
+</svg>
+
+<div class="wrap">
+
+<header class="top">
+  <div class="brand">
+    <h1>BAS Experiment Monitor</h1>
+    <span id="experiment-name"></span>
+  </div>
+  <div class="pairs">
+    <div class="pair"><span class="k">Run</span><span class="mono" id="run-id">&mdash;</span></div>
+    <div class="pair"><span class="k">State</span><span class="v" id="run-state">&mdash;</span></div>
+    <div class="pair"><span class="k">Feed</span><span class="v feed-val" id="feed-ok">&mdash;</span></div>
+    <div class="pair"><span class="k">Processing</span><span class="mono" id="fps">&mdash;</span></div>
+  </div>
+  <span class="advisory"><svg class="icon" width="16" height="16" aria-hidden="true"><use href="#i-info"></use></svg>Advisory only</span>
+  <div class="actions">
+    <button type="button" class="btn btn-start" id="btn-start"><svg class="icon" width="16" height="16" aria-hidden="true"><use href="#i-play"></use></svg>Start</button>
+    <button type="button" class="btn btn-reset" id="btn-reset"><svg class="icon" width="16" height="16" aria-hidden="true"><use href="#i-reset"></use></svg>Reset</button>
   </div>
 </header>
 
-<p class="banner banner-waiting" id="start-banner" role="status" hidden>waiting to start</p>
+<p class="status-line" id="start-banner" role="status" hidden>waiting to start</p>
 
-<main class="layout">
-  <section class="video-pane">
-    <img id="video" src="/video_feed" alt="Live camera feed" width="640" height="480">
-  </section>
+<p class="error" id="error-banner" role="alert" hidden></p>
 
-  <section class="side-pane">
-    <div class="guidance" id="guidance">
-      <p class="guidance-now">Now: <span id="expected-step">--</span></p>
-      <p class="guidance-next">Next: <span id="next-step-say">--</span></p>
-    </div>
+<div class="alert" id="deviation-banner" role="alert" hidden>
+  <span class="alert-icon"><svg class="icon" width="28" height="28" aria-hidden="true"><use href="#i-warn"></use></svg></span>
+  <div class="alert-text">
+    <div class="alert-label" id="deviation-label"></div>
+    <div class="alert-msg" id="deviation-msg"></div>
+  </div>
+  <span class="alert-time mono" id="deviation-time"></span>
+</div>
 
-    <h2>Steps</h2>
-    <ol class="step-list" id="step-list"></ol>
+<main class="body">
+  <div class="col-left">
+    <section class="panel area-video" aria-label="Live camera feed">
+      <div class="video">
+        <img id="video" src="/video_feed" alt="Live camera feed">
+        <div class="lost" id="feed-lost" hidden>
+          <svg class="icon" width="48" height="48" aria-hidden="true"><use href="#i-camoff"></use></svg>
+          <div class="lost-title">Camera feed lost</div>
+          <div class="lost-sub">No frames received</div>
+        </div>
+      </div>
+      <div class="caption"><span>Live camera feed</span><span>Raw feed, no overlay</span></div>
+    </section>
 
-    <h2>Alerts</h2>
-    <ul class="alert-list" id="alert-list"></ul>
-  </section>
+    <section class="panel area-log" aria-label="Event log">
+      <div class="head"><h2>Event log</h2><span>Video time</span></div>
+      <ol class="log" id="event-log"></ol>
+    </section>
+  </div>
+
+  <div class="col-right">
+    <section class="panel pad area-next" id="guidance" aria-label="Next action">
+      <div class="g-top"><span class="g-label">Next action</span><span class="mono" id="step-no"></span></div>
+      <div class="cue-row">
+        <span class="cue-icon"><svg class="icon" width="32" height="32" aria-hidden="true"><use href="#i-speaker"></use></svg></span>
+        <div class="cue" id="cue">&mdash;</div>
+      </div>
+      <div class="segs" id="progress" role="img"></div>
+      <div class="g-foot"><span id="confirmed-a"></span><span>Also spoken aloud</span></div>
+    </section>
+
+    <section class="panel pad area-next" id="summary" aria-label="Run summary" hidden>
+      <div class="sum-head">
+        <span class="sum-icon" id="summary-icon"></span>
+        <div class="sum-title" id="summary-headline"></div>
+      </div>
+      <div class="tiles">
+        <div class="tile"><div class="tile-n mono" id="tile-skipped">0</div><div class="tile-l">Skipped steps</div></div>
+        <div class="tile"><div class="tile-n mono" id="tile-late">0</div><div class="tile-l">Completed late</div></div>
+      </div>
+      <div class="sum-lines"><span id="summary-skipped"></span><span id="summary-late"></span></div>
+    </section>
+
+    <section class="panel area-steps" aria-label="Procedure steps">
+      <div class="head"><h2>Procedure steps</h2><span id="confirmed-b"></span></div>
+      <ol class="steps" id="step-list"></ol>
+    </section>
+  </div>
 </main>
 
-<p class="error" id="error-banner" hidden></p>
+</div>
 
 <script>/*__APP_JS__*/</script>
 </body>
