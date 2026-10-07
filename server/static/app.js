@@ -14,8 +14,9 @@
   // A static replay can swap this object without touching any rendering code below. Each call
   // returns a promise; a failed request rejects with an Error whose message names the request.
   var api = {
-    status: function () {
-      return getJson("/api/status", "status");
+    // handle (optional): receives cancel(), used to drop a poll that a click has made stale.
+    status: function (handle) {
+      return getJson("/api/status", "status", false, handle);
     },
     // Fetched once per run (the definition never changes while a run is going).
     experiment: function () {
@@ -41,45 +42,68 @@
 
   // The ONE place that calls fetch. Every request is given up after FETCH_TIMEOUT_MS (a connect to
   // a dead port otherwise hangs for about 21 s on Windows) and a timeout rejects like any other
-  // failure. `accept` receives the Response and returns the value, or throws.
-  function request(path, options, what, accept) {
+  // failure. The timer itself rejects the returned promise, so the request ends even where
+  // AbortController does not exist (the abort, when available, only frees the connection).
+  // `accept` receives the Response and returns the value, or throws. `handle`, when given, gets a
+  // cancel() that ends the request on purpose: it rejects with an Error whose `cancelled` is true,
+  // which callers treat as neither a failure nor a banner.
+  function request(path, options, what, accept, handle) {
     var controller = typeof AbortController === "function" ? new AbortController() : null;
+    var end;
+    var gate = new Promise(function (resolve, reject) {
+      end = reject;
+    });
     var timer = setTimeout(function () {
       if (controller) {
         controller.abort();
       }
+      end(new Error(what + " request timed out"));
     }, FETCH_TIMEOUT_MS);
+    if (handle) {
+      handle.cancel = function () {
+        var err = new Error(what + " request cancelled");
+        err.cancelled = true;
+        if (controller) {
+          controller.abort();
+        }
+        end(err);
+      };
+    }
     var init = options || {};
     if (controller) {
       init.signal = controller.signal;
     }
-    return fetch(path, init)
-      .then(accept)
-      .then(
-        function (value) {
-          clearTimeout(timer);
-          return value;
-        },
-        function (err) {
-          clearTimeout(timer);
-          if (err && err.name === "AbortError") {
-            throw new Error(what + " request timed out");
-          }
-          throw err;
+    return Promise.race([fetch(path, init).then(accept), gate]).then(
+      function (value) {
+        clearTimeout(timer);
+        return value;
+      },
+      function (err) {
+        clearTimeout(timer);
+        if (err && err.name === "AbortError") {
+          throw new Error(what + " request timed out");
         }
-      );
+        throw err;
+      }
+    );
   }
 
-  function getJson(path, what, emptyOn404) {
-    return request(path, null, what, function (response) {
-      if (emptyOn404 && response.status === 404) {
-        return null;
-      }
-      if (!response.ok) {
-        throw new Error(what + " request failed: " + response.status);
-      }
-      return response.json();
-    });
+  function getJson(path, what, emptyOn404, handle) {
+    return request(
+      path,
+      null,
+      what,
+      function (response) {
+        if (emptyOn404 && response.status === 404) {
+          return null;
+        }
+        if (!response.ok) {
+          throw new Error(what + " request failed: " + response.status);
+        }
+        return response.json();
+      },
+      handle
+    );
   }
 
   function post(path) {
@@ -363,7 +387,9 @@
   }
 
   function renderBanner(runState) {
-    if (runState === "running") {
+    if (model.unreachable) {
+      els.banner.textContent = "Connection lost";
+    } else if (runState === "running") {
       els.banner.textContent = "running";
     } else if (runState === "idle") {
       els.banner.textContent = "waiting to start";
@@ -622,6 +648,8 @@
       return;
     }
     autostartFired = true;
+    // Deliberately a fresh read outside the poll loop: it does not share the poll's in-flight flag
+    // or its cancellation, and its result is not rendered (it only decides whether to start).
     api
       .status()
       .then(function (status) {
@@ -644,6 +672,13 @@
   var pollInFlight = false;
   var pollAgain = false;
   var pollTimer = null;
+  // A click on Start or Reset makes every status request that began before it, or while its POST
+  // is still pending, stale: it may carry the state from before the click. `epoch` changes at the
+  // click and again when the POST settles; a response from an older epoch is never rendered, the
+  // request in flight is cancelled at the click, and no poll starts while a POST is pending.
+  var epoch = 0;
+  var controlPending = 0;
+  var statusHandle = null;
 
   function schedulePoll(delay) {
     if (pollTimer !== null) {
@@ -663,6 +698,7 @@
 
   function pollSettled() {
     pollInFlight = false;
+    statusHandle = null;
     var again = pollAgain;
     pollAgain = false;
     schedulePoll(again ? 0 : POLL_MS);
@@ -673,13 +709,26 @@
       clearTimeout(pollTimer);
       pollTimer = null;
     }
-    if (pollInFlight) {
-      return;
+    if (pollInFlight || controlPending > 0) {
+      return; // pollSoon() restarts the loop when the pending POST settles
     }
     pollInFlight = true;
+    var startedIn = epoch;
+    statusHandle = {};
     api
-      .status()
-      .then(onStatus, onStatusError)
+      .status(statusHandle)
+      .then(
+        function (status) {
+          if (startedIn === epoch) {
+            onStatus(status);
+          }
+        },
+        function (err) {
+          if (startedIn === epoch && !(err && err.cancelled)) {
+            onStatusError(err);
+          }
+        }
+      )
       .then(pollSettled, function (err) {
         pollSettled(); // a rendering bug must not stop the polling; it still surfaces in the console
         throw err;
@@ -708,6 +757,9 @@
     model.unreachable = true;
     showErrors();
     render();
+    if (!model.status) {
+      renderBanner(null); // nothing rendered yet (server down at page load): the line still says so
+    }
   }
 
   // The experiment definition once per run; the run's log on each poll while a run exists
@@ -768,14 +820,21 @@
     // pollSoon() below) sets the real enabled/disabled state from the server's actual run_state once
     // it responds, on both the success and the "already in that state" paths.
     button.disabled = true;
+    epoch += 1; // every status request started before this click is now stale
+    controlPending += 1;
+    if (statusHandle) {
+      statusHandle.cancel();
+    }
     call()
-      .then(function () {
-        pollSoon();
-      })
       .catch(function (err) {
         errors.status = unreachable(err);
         showErrors();
         button.disabled = false;
+      })
+      .then(function () {
+        controlPending -= 1;
+        epoch += 1;
+        pollSoon();
       });
   }
 

@@ -32,6 +32,7 @@
   --num-border: #3a4148;
   --btn-border: #5a626c;
   --advisory-border: #4a515a;
+  --scroll-thumb: #6b737d; /* log scrollbar thumb: 3.41:1 on --panel, a non-text pair (3:1) */
 
   --font-sans: "Segoe UI", system-ui, "Helvetica Neue", sans-serif;
   --font-mono: ui-monospace, "Cascadia Mono", Consolas, monospace;
@@ -407,8 +408,8 @@ ol {
 .log {
   max-height: 312px;
   overflow-y: auto;
-  /* thumb on track, from existing tokens (a dark page must not get a light system scrollbar) */
-  scrollbar-color: var(--advisory-border) var(--panel);
+  /* a dark page must not get a light system scrollbar */
+  scrollbar-color: var(--scroll-thumb) var(--panel);
 }
 
 .row {

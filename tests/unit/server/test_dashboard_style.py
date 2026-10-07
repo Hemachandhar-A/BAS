@@ -287,8 +287,15 @@ def test_the_script_only_calls_the_existing_routes() -> None:
     assert Path(STATIC / "app.js").exists()
 
 
-def test_the_scrolling_log_has_a_dark_scrollbar_from_existing_tokens() -> None:
+# Non-text pairs (graphics): WCAG 1.4.11, 3:1.
+NON_TEXT_PAIRS = [("scroll-thumb", "panel", "the event log's scrollbar thumb on its track")]
+
+
+def test_the_scrolling_log_has_a_dark_scrollbar_with_a_visible_thumb() -> None:
+    assert TOKENS["scroll-thumb"] == "#6b737d"
     log_rule = next(body for sel, body in css_rules() if sel.strip() == ".log")
-    assert "scrollbar-color: var(--advisory-border) var(--panel);" in log_rule
-    # thumb #4a515a on track #1c2024, as specified. Recorded, not asserted at 3:1: see ISSUES.md.
-    print(f"scrollbar thumb on track {contrast('advisory-border', 'panel'):.2f}:1")
+    assert "scrollbar-color: var(--scroll-thumb) var(--panel);" in log_rule
+    for fg, bg, where in NON_TEXT_PAIRS:
+        ratio = contrast(fg, bg)
+        print(f"{fg:12} on {bg:6} {ratio:5.2f}:1  {where} (non-text, 3:1)")
+        assert ratio >= 3, f"{fg} on {bg} ({where}) is {ratio:.2f}:1, below 3:1"

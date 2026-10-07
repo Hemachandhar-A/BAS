@@ -5,6 +5,7 @@ runner, and small readers over the DOM snapshot it returns."""
 from __future__ import annotations
 
 import json
+import os
 import shutil
 import subprocess
 from datetime import UTC, datetime
@@ -23,7 +24,8 @@ from contracts import (
 
 ROOT = Path(__file__).resolve().parents[3]
 STATIC = ROOT / "server" / "static"
-APP_JS = STATIC / "app.js"
+# DASHBOARD_APP_JS points the same tests at another copy of the page (to run them on an old one)
+APP_JS = Path(os.environ.get("DASHBOARD_APP_JS", STATIC / "app.js"))
 INDEX_HTML = STATIC / "index.html"
 HARNESS_JS = Path(__file__).with_name("dashboard_harness.js")
 

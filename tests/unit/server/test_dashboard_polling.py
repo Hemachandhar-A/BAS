@@ -137,10 +137,12 @@ def test_a_page_opened_while_the_server_is_down_recovers_when_it_comes_back(
     got = page(
         tmp_path,
         good_world(hang_status=True),
-        [{"advance": 3000, "poll": True}, {"set": {"hang_status": False}, "advance": 2600}],
+        [{"advance": 3000}, {"set": {"hang_status": False}, "advance": 2600}],
     )
-    assert got["snapshots"][-1]["error-banner"]["hidden"] is True
-    assert text(got["snapshots"][-1], "run-state") == "Running"
+    _load, midpoint, recovered = got["snapshots"]
+    assert midpoint["error-banner"]["hidden"] is False  # visible while the server is down...
+    assert recovered["error-banner"]["hidden"] is True  # ...and gone once it is back
+    assert text(recovered, "run-state") == "Running"
 
 
 # --- the other requests time out too, and never pile up -----------------------------------------
@@ -200,3 +202,101 @@ def test_voice_wording_does_not_claim_more_than_the_page_knows(tmp_path: Path) -
     assert "Voice cue text" in html and "Also spoken aloud" not in html
     assert "Spoken" not in code() and "Voice text: " in code()
     assert "Voice alert" in code()  # the banner label stays
+
+
+# --- review round 2 (S-I1c-fix2) -----------------------------------------------------------
+
+
+def idle_world(**kw):
+    return {
+        "experiment": experiment_payload(),
+        "status": status("p" * len(STEP_IDS), "idle", expected=STEP_IDS[0]),
+        "log": None,
+        **kw,
+    }
+
+
+@pytest.mark.parametrize("racing_response", [False, True], ids=["aborted", "response_races_abort"])
+@pytest.mark.parametrize("button", ["btn-start", "btn-reset"])
+def test_a_status_answer_older_than_a_click_is_never_rendered(
+    tmp_path: Path, button: str, racing_response: bool
+) -> None:
+    """A poll is in flight (it will answer 'idle' at 1000 ms); Start or Reset is clicked, POST
+    completes; the server is now running. The old answer must not re-enable Start; a fresh poll
+    shows the real state; no error banner flashes."""
+    running = status("c" + "p" * (len(STEP_IDS) - 1), "running", times={0: 1.0})
+    w = idle_world(status_delay_ms=1000, status_ignores_abort=racing_response)
+    got = run_page(
+        tmp_path,
+        {
+            "world": w,
+            "no_abort_controller": racing_response,
+            "steps": [
+                {
+                    "set": {"status": running, "status_delay_ms": 300},
+                    "click": button,
+                    "advance": 1100,  # the old answer is due at 1000
+                },
+                {"advance": 1500},
+            ],
+        },
+    )
+    after_old_answer, later = got["snapshots"][1], got["snapshots"][2]
+    for snap in (after_old_answer, later):
+        assert snap["error-banner"]["hidden"] is True  # never a flash of an error
+        assert snap["btn-start"]["disabled"] is True  # the stale 'idle' did not re-enable Start
+        assert text(snap, "run-state") == "Running"  # the fresh poll's state
+    assert got["max_inflight_status"] <= 2  # at most the cancelled one and its replacement
+
+
+def test_without_abortcontroller_a_silent_server_still_ends_in_the_banner_and_polling_goes_on(
+    tmp_path: Path,
+) -> None:
+    got = run_page(
+        tmp_path,
+        {
+            "world": good_world(),
+            "no_abort_controller": True,
+            "steps": [
+                {"set": {"hang_status": True}, "advance": 3000},
+                {"set": {"hang_status": False}, "advance": 2600},
+            ],
+        },
+    )
+    _ok, failed, back = got["snapshots"]
+    assert failed["error-banner"]["hidden"] is False
+    assert text(failed, "error-banner") == "Could not reach the server: status request timed out"
+    assert text(failed, "run-state") == DASH
+    assert back["error-banner"]["hidden"] is True  # polling did not stall
+    assert text(back, "run-state") == "Running"
+
+
+def test_while_the_connection_is_lost_the_status_line_says_so(tmp_path: Path) -> None:
+    got = page(
+        tmp_path,
+        good_world(),
+        [
+            {"set": {"hang_status": True}, "advance": 3000},
+            {"set": {"hang_status": False}, "advance": 2600},
+        ],
+    )
+    ok, lost, back = got["snapshots"]
+    assert text(ok, "start-banner") == "running"
+    assert (
+        text(lost, "start-banner") == "Connection lost" and lost["start-banner"]["hidden"] is False
+    )
+    assert text(back, "start-banner") == "running"
+
+
+def test_a_page_that_never_reached_the_server_says_connection_lost(tmp_path: Path) -> None:
+    got = page(tmp_path, good_world(hang_status=True), [{"advance": 3000}])
+    snap = got["snapshots"][-1]
+    assert (
+        text(snap, "start-banner") == "Connection lost" and snap["start-banner"]["hidden"] is False
+    )
+
+
+def test_the_autostart_read_is_documented_as_a_fresh_read_outside_the_poll_loop() -> None:
+    js = APP_JS.read_text(encoding="utf-8")
+    body = js.split("function autostart()")[1].split("// ---- polling")[0]
+    assert "outside the poll loop" in body and "not rendered" in body

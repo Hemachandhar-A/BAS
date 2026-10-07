@@ -11,6 +11,8 @@
 // World fields: status, experiment, log (an object, null = 404, "error" = 500), fail_status,
 // fail_experiment, post_status (HTTP status for POSTs), hang_status / hang_experiment / hang_log
 // (the request never settles unless aborted), status_delay_ms (virtual response time).
+// Scenario flag no_abort_controller deletes AbortController; world.status_ignores_abort makes a
+// delayed status answer arrive even after its request was aborted (a response racing the abort).
 // A step's "advance": ms runs that much virtual time (default 500, "poll": false = none). The initial poll happens at load; each
 // step then optionally mutates the world, acts, polls (default) and snapshots. Output: JSON
 // {snapshots: [...], fetches: [[path, ...] per step], posts: [...], timers: [ms ...], intervals}.
@@ -161,6 +163,7 @@ const settle = async () => {
 // Runs every virtual timer due within the next `ms`, in order, settling promises after each.
 async function advance(ms) {
   const target = world.now + ms;
+  await settle(); // work queued by the step's own actions (a click, a POST) runs first
   for (;;) {
     const due = sched.filter((t) => t.at <= target).sort((a, b) => a.at - b.at || a.id - b.id)[0];
     if (!due) break;
@@ -178,11 +181,13 @@ function reply(status, body) {
 }
 
 // A response that arrives after `ms` of virtual time (and is dropped if the request is aborted).
-function later(ms, make, signal) {
+function later(ms, make, signal, ignoreAbort) {
   return new Promise((resolve, reject) => {
     const abort = () => reject(Object.assign(new Error("aborted"), { name: "AbortError" }));
-    if (signal && signal.aborted) return abort();
-    if (signal) signal.addEventListener("abort", abort);
+    if (!ignoreAbort) {
+      if (signal && signal.aborted) return abort();
+      if (signal) signal.addEventListener("abort", abort);
+    }
     if (ms === Infinity) return; // never settles on its own (a connect to a dead port)
     const id = ++schedSeq;
     sched.push({ id, fn: () => resolve(make()), at: world.now + ms, every: 0 });
@@ -201,7 +206,13 @@ global.fetch = (url, opts) => {
     if (world.hang_status) {
       pending = later(Infinity, null, opts && opts.signal);
     } else if (world.status_delay_ms) {
-      pending = later(world.status_delay_ms, () => ({ ok: true, status: 200, json: () => Promise.resolve(world.status) }), opts && opts.signal);
+      const body = world.status; // the answer carries the state at the time of the REQUEST
+      pending = later(
+        world.status_delay_ms,
+        () => ({ ok: true, status: 200, json: () => Promise.resolve(body) }),
+        opts && opts.signal,
+        world.status_ignores_abort
+      );
     } else {
       pending = world.fail_status ? reply(500, {}) : reply(200, world.status);
     }
@@ -251,6 +262,7 @@ function snapshot() {
 
 (async () => {
   Object.assign(world, scenario.world || {});
+  if (scenario.no_abort_controller) delete global.AbortController;
   const appSource = fs.readFileSync(appPath, "utf8");
   eval(appSource);
   await settle();
