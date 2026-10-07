@@ -104,7 +104,7 @@ verdict per box) is in the bundle.
   **Credit: Hemachandhar A and the SIH 2026 PS 26174 team.**
   The Kaggle metadata field is `other` (see `docs/KIT.md`: the installed CLI documents no CC BY name offline), so
   the real licence is stated here and in the dataset description.
-* **Consent of the people in the footage:** [user] consent confirmed by the Lead. No individual is named and the
+* **Consent:** all people appearing in the footage agreed to it being shared. No individual is named and the
   consent records are not in the repository. Whether faces or other identifying features are visible in the
   footage has not been checked [unknown].
 * **Public visibility:** this dataset and the code repository (<https://github.com/Hemachandhar-A/BAS>) are

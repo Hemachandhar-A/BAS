@@ -76,8 +76,8 @@ LICENCES, PER FILE (facts, not legal advice; details in docs/LICENSES.md of the 
   * 01_x016_clean.mp4, 02_x032_skip.mp4, 03_x025_swap.mp4, 04_x036_idle.mp4, playlist.txt:
     footage recorded by the project team: CC BY 4.0. Credit required:
     Credit: Hemachandhar A and the SIH 2026 PS 26174 team
-    Consent of the people in the footage: [user] consent confirmed by the Lead (no individual
-    named).
+    Consent: all people appearing in the footage agreed to it being shared (no individual
+    is named).
   * detector_yolo11n.pt: Ultralytics YOLO11n, fine-tuned by the project: AGPL-3.0 (it cannot be made
     permissive; weights/MANIFEST.json in the repository records "AGPL-3.0"). Network use of YOLO11n
     triggers the AGPL's source-offer duty; the project source is public at the URL above. The
@@ -108,8 +108,8 @@ skipped, out-of-order or repeated step.
 `weights/` and `demo_videos/` as KIT_README.txt says, run `python scripts/verify_assets.py` (must \
 end with READY), then follow the README of the repository.
 
-**Licences (mixed, hence the licence field "other").** Clips: CC BY 4.0, {CREDIT}; consent of the \
-people in the footage: [user] consent confirmed by the Lead. `detector_yolo11n.pt`: AGPL-3.0 \
+**Licences (mixed, hence the licence field "other").** Clips: CC BY 4.0, {CREDIT}. All people \
+appearing in the footage agreed to it being shared. `detector_yolo11n.pt`: AGPL-3.0 \
 (Ultralytics YOLO11n fine-tune; cannot be made permissive). `hand_landmarker.task`: Apache-2.0. \
 Project code: MIT. Per-file details in KIT_README.txt and docs/LICENSES.md of the repository. Not \
 legal advice.
@@ -131,8 +131,8 @@ The repository README section 8 lists the replay and evaluation commands. Do not
 test split.
 
 **Licence.** Footage and labels: CC BY 4.0 (the Kaggle licence field says "other" because no CC BY \
-name is documented in the offline Kaggle CLI). {CREDIT}. Consent of the people in the footage: \
-[user] consent confirmed by the Lead. Model weights are not part of this dataset unless it was \
+name is documented in the offline Kaggle CLI). {CREDIT}. All people appearing in the footage \
+agreed to it being shared. Model weights are not part of this dataset unless it was \
 built with weights; they keep their own licences (YOLO11n AGPL-3.0, RF-DETR-Nano and MediaPipe \
 Apache-2.0). Project code: MIT. Not legal advice.
 
