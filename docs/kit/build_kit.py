@@ -83,12 +83,16 @@ DATASET_META = {
     "demo": {
         "title": "BAS demo kit",
         "id": DEMO_SLUG,
-        "licenses": [{"name": "unknown"}],
+        "licenses": [{"name": "other"}],  # PLACEHOLDER: DECISION - Lead (docs/KIT.md)
+        "description": "Files to run the BAS recorded-clip demo: two model files, four clips, a "
+        "playlist and SHA256SUMS.txt. See KIT_README.txt. Licence and visibility: DECISION - Lead.",
     },
     "full": {
         "title": "BAS dataset full",
         "id": FULL_SLUG,
-        "licenses": [{"name": "unknown"}],
+        "licenses": [{"name": "other"}],  # PLACEHOLDER: DECISION - Lead (docs/KIT.md)
+        "description": "BAS Sample Transfer: 46 recorded runs, scripts, labels, COCO dataset and "
+        "reports to reproduce the results. See DATASET_CARD.md. Licence, consent: DECISION - Lead.",
     },
 }
 
