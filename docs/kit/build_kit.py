@@ -45,8 +45,7 @@ PLAYLIST = """\
 02_x032_skip.mp4
 03_x025_swap.mp4
 04_x036_idle.mp4
-# Not in the kit (see README section 6): x015 (a clean run on which the LIVE path raises a false
-# omission alert, the cached replay does not), x022 (a correct run on which the START press is
+# Not in the kit (see README section 6): x022 (a correct run on which the START press is
 # missed: a documented false alarm), x040 (val repeat, 8.6 s, the repeat is not detected),
 # x038 (repeat, TEST split: needs --allow-heldout, a Lead decision). Get them from bas-dataset-full.
 """
@@ -257,7 +256,13 @@ def main(argv: list[str] | None = None) -> int:
     )
     ap.add_argument("--with-weights", action="store_true", help="bundle B also carries all weights")
     ap.add_argument("--only", choices=["demo", "full"], help="build one bundle only")
+    ap.add_argument("--kaggle-user", help="replace <kaggle-user> in the dataset ids")
     args = ap.parse_args(argv)
+    if args.kaggle_user:
+        global DEMO_SLUG, FULL_SLUG
+        DEMO_SLUG = DEMO_SLUG.replace("<kaggle-user>", args.kaggle_user)
+        FULL_SLUG = FULL_SLUG.replace("<kaggle-user>", args.kaggle_user)
+        DATASET_META["demo"]["id"], DATASET_META["full"]["id"] = DEMO_SLUG, FULL_SLUG
     stage = Path(args.stage)
     try:
         if args.only != "full":
