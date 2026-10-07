@@ -32,3 +32,7 @@ runs/*/*.mp4
 Thumbs.db
 .vscode/
 .idea/
+
+# Judge replication kit (docs/KIT.md): clips for the demo and the staged Kaggle bundles
+demo_videos/
+kit_staging/
