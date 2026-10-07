@@ -97,22 +97,30 @@ verdict per box) is in the bundle.
 * Some clips end before the experiment does: the cached replay of x024 (val, skip, 9.8 s) and of x036
   (idle) ends without a `run_completed` event [run: `python scripts/replay.py --from-cache x024`].
 
-## 7. Consent and licence (placeholders for the Lead)
+## 7. Licence, consent and visibility
 
-* **Consent of the people in the footage: DECISION - Lead.** Nothing in the repository records consent,
-  and whether faces or other identifying features are visible in the footage has not been checked
-  [unknown]. NOT VERIFIED.
-* **Licence of the footage, labels and COCO files: DECISION - Lead.** `dataset-metadata.json` carries
-  the Kaggle placeholder `other`.
-* The detector weights are separate: YOLO11n fine-tune, **AGPL-3.0**; RF-DETR-Nano fine-tune,
-  Apache-2.0; MediaPipe hand landmarker, Apache-2.0 (`weights/MANIFEST.json`) [repo].
-* Visibility (private or public) of the Kaggle datasets: **DECISION - Lead.**
+* **Licence of the footage and labels** (the recordings, `script.json`, the COCO files, the corrections and the
+  label review): **CC BY 4.0** [user, decision of 2026-10-07]. Credit is required:
+  **Credit: Hemachandhar A and the SIH 2026 PS 26174 team.**
+  The Kaggle metadata field is `other` (see `docs/KIT.md`: the installed CLI documents no CC BY name offline), so
+  the real licence is stated here and in the dataset description.
+* **Consent of the people in the footage:** [user] consent confirmed by the Lead. No individual is named and the
+  consent records are not in the repository. Whether faces or other identifying features are visible in the
+  footage has not been checked [unknown].
+* **Public visibility:** this dataset and the code repository (<https://github.com/Hemachandhar-A/BAS>) are
+  public [user, decision of 2026-10-07].
+* **The model weights are separate and keep their own licences:** YOLO11n fine-tune **AGPL-3.0**; RF-DETR-Nano
+  fine-tune Apache-2.0; MediaPipe hand landmarker Apache-2.0 (`weights/MANIFEST.json`) [repo]. The project code is
+  MIT. All of it is in `docs/LICENSES.md`. Not legal advice.
 
 ## 8. How to cite
 
-> BAS "Sample Transfer" dataset, `<authors / team>`, `<year>`, `<kaggle-user>/bas-dataset-full`
-> (code: `<repo-url>`, commit `<hash>`). **DECISION - Lead:** fill in the authors, the year, the URLs and
-> a DOI if one is minted.
+> Hemachandhar A and the SIH 2026 PS 26174 team (2026). *BAS "Sample Transfer" dataset: 46 recorded runs with
+> labels.* Kaggle dataset `hemachandhara/bas-dataset-full`,
+> <https://www.kaggle.com/datasets/hemachandhara/bas-dataset-full>. Licence CC BY 4.0.
+> Code: <https://github.com/Hemachandhar-A/BAS> (give the commit hash you used).
+
+No DOI has been minted [unknown].
 
 ## 9. Integrity
 
