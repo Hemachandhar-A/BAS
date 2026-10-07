@@ -4,10 +4,10 @@
 # dataset: <kaggle-user>/bas-demo-kit
 # dataset-full: <kaggle-user>/bas-dataset-full
 # The dataset slugs above are placeholders until the Lead publishes the bundles.
-6a4700bc6451f17e555fc23fd2f4c10e19d2a0c748c56ce892aaae525cc79b80  demo_videos/01_x015_clean.mp4
+a58dc01816f37e2dad0f507cea27e7bfba7e9d4d18288c0f425f9571745f60d3  demo_videos/01_x016_clean.mp4
 4cdd24f405eaedcdd658f89e7a49e4fedbe4cc07e462e25a67cbd39253d646ab  demo_videos/02_x032_skip.mp4
 c1bf1f0d13834aa6361670b0953ba5cb8e5be14ecf8e8d644cf81f4a67d87196  demo_videos/03_x025_swap.mp4
 594f3267f449ceac3ff0ca9cbb1533d5dff033ef0cc369afa505618d4669dc33  demo_videos/04_x036_idle.mp4
 cb9cd840618525058823e4242e8ced9539118dc2f134456785667289e1ab1613  weights/detector_yolo11n.pt
 fbc2a30080c3c557093b5ddfc334698132eb341044ccee322ccf8bcf3607cde1  weights/hand_landmarker.task
-e8dad5c18a24b15e98679dc0d46fea794775057848099eae933c709652e89d6f  demo_videos/playlist.txt
+14d563493851c335e9f6df16354dcb03bec80603ec0d89d2a770a267984be531  demo_videos/playlist.txt

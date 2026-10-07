@@ -31,7 +31,7 @@ FULL_SLUG = "<kaggle-user>/bas-dataset-full"
 
 # (run id, staged name, story role). All four are val-split originals: no --allow-heldout needed.
 DEMO_CLIPS = [
-    ("x015", "01_x015_clean.mp4", "clean run"),
+    ("x016", "01_x016_clean.mp4", "clean run"),
     ("x032", "02_x032_skip.mp4", "skipped step (START)"),
     ("x025", "03_x025_swap.mp4", "swapped order (yellow before red)"),
     ("x036", "04_x036_idle.mp4", "idle, a hand roams, no step is performed"),
@@ -41,11 +41,12 @@ PLAYLIST = """\
 # bas-demo-kit playlist: one clip per line, relative to this file. Put it next to the clips in
 # demo_videos/ and run:  python scripts/demo.py --playlist demo_videos/playlist.txt ...
 # Every clip is its own run. NEVER stitch, trim or re-encode a clip.
-01_x015_clean.mp4
+01_x016_clean.mp4
 02_x032_skip.mp4
 03_x025_swap.mp4
 04_x036_idle.mp4
-# Not in the kit (see README section 6): x022 (a correct run on which the START press is
+# Not in the kit (see README section 6): x015 (a clean run on which the LIVE path raises a false
+# omission alert, the cached replay does not), x022 (a correct run on which the START press is
 # missed: a documented false alarm), x040 (val repeat, 8.6 s, the repeat is not detected),
 # x038 (repeat, TEST split: needs --allow-heldout, a Lead decision). Get them from bas-dataset-full.
 """
@@ -61,7 +62,7 @@ WHERE TO UNZIP
   Copy the files into the cloned repository (the folder that holds README.md and scripts/):
     weights/detector_yolo11n.pt
     weights/hand_landmarker.task
-    demo_videos/01_x015_clean.mp4  02_x032_skip.mp4  03_x025_swap.mp4  04_x036_idle.mp4
+    demo_videos/01_x016_clean.mp4  02_x032_skip.mp4  03_x025_swap.mp4  04_x036_idle.mp4
     demo_videos/playlist.txt
   (Create weights/ and demo_videos/ if they are missing. This dataset is flat on purpose.)
   Then:  python scripts/verify_assets.py     -> must end with READY
@@ -203,11 +204,12 @@ def build_full(stage: Path, with_weights: bool) -> list[tuple[str, str, int]]:
         "runs/provenance.csv",
         "runs/run_plan.csv",
         "data/dataset",
-        "data/corrections",
+        "data/corrections/train.json",
+        "data/corrections/val.json",
+        "data/corrections/test.json",
         "data/label_review.csv",
         "reports/dataset.json",
         "reports/training",
-        "training/README_GPU.md",
     ):
         take(rel)
     if with_weights:
