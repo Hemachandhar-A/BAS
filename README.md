@@ -2,8 +2,22 @@
 
 Source tags: **[repo]** read from a file here, **[run]** observed by running it while this kit was prepared,
 **[issues]** stated in `ISSUES.md`, **[user]** stated by the project team, **[unknown]** nobody has checked.
-Anything not checked is marked **NOT VERIFIED**. Placeholders in `<angle brackets>` are filled in by the
-project lead before the kit is handed out.
+Anything not checked is marked **NOT VERIFIED**. The repository and both Kaggle datasets are **public**.
+
+**Demo video:** [DEMO VIDEO LINK - Lead to add]
+
+**Links.** Repository <https://github.com/Hemachandhar-A/BAS>; demo kit <https://www.kaggle.com/datasets/hemachandhara/bas-demo-kit>; full dataset
+<https://www.kaggle.com/datasets/hemachandhara/bas-dataset-full>.
+
+> **Licences at a glance** (table with sources and status: [`docs/LICENSES.md`](docs/LICENSES.md); not legal advice)
+>
+> * Project code: **MIT** ([`LICENSE`](LICENSE)).
+> * Footage and labels: **CC BY 4.0**, credit required: *Credit: Hemachandhar A and the SIH 2026 PS 26174 team*.
+> * YOLO11n weights (the default detector) and the `ultralytics` package: **AGPL-3.0**. Network use triggers the
+>   AGPL's source-offer duty; this source is public. Licence-clean build: `uv sync --group run` with RF-DETR-Nano
+>   (Apache-2.0, **not validated for the pipeline**).
+> * MediaPipe hand model and Grounding DINO tiny (auto-labeler): Apache-2.0.
+> * Known limits of this demo build: section 12.
 
 ## 1. What this is
 
@@ -21,12 +35,12 @@ judged as its own run, with its own log in `runs_out/logs/`. The expected sounds
 
 ## 2. Quick start for judges
 
-Windows, PowerShell, from an empty folder. Placeholders: `<repo-url>`, `<kaggle-user>`. Details in section 4.
+Windows, PowerShell, from an empty folder. Details in section 4.
 
 ```powershell
-git clone <repo-url> BAS; cd BAS
+git clone https://github.com/Hemachandhar-A/BAS.git BAS; cd BAS
 uv sync --group run --group yolo; .venv\Scripts\Activate.ps1
-kaggle datasets download <kaggle-user>/bas-demo-kit -p kit --unzip     # or the browser download, section 4
+kaggle datasets download hemachandhara/bas-demo-kit -p kit --unzip     # or the browser download, section 4
 New-Item -ItemType Directory -Force demo_videos | Out-Null; Move-Item kit\*.pt, kit\*.task weights\; Move-Item kit\*.mp4, kit\playlist.txt demo_videos\
 Copy-Item .env.example .env; notepad .env                                  # set STREAM_USER and STREAM_PASSWORD (not 'changeme')
 python scripts/verify_assets.py                                            # last line must be READY
@@ -51,9 +65,8 @@ python scripts/demo.py --tls off --playlist demo_videos/playlist.txt --pause-bet
 
 ## 4. Step by step
 
-**1. Clone.** `git clone <repo-url> BAS` and `cd BAS`. The repository is private at the time of writing
-(`https://github.com/Hemachandhar-A/BAS.git` [repo, `git remote -v`]); ask the project lead to add you as a
-collaborator and sign in with `git` or `gh` before cloning. *Fresh clone, timed: 3 s for a local clone [run].*
+**1. Clone.** `git clone https://github.com/Hemachandhar-A/BAS.git BAS` and `cd BAS`. The repository is public [user, 2026-10-07]; no
+account or access request is needed to clone it. *Fresh clone, timed: 3 s for a local clone [run].*
 
 **2. Install** (needs the network, **NOT RUN** on the preparation machine: the dry run resolves from the lockfile):
 
@@ -67,17 +80,18 @@ uv sync --group run                   # licence-clean build: no ultralytics; the
 The licence-clean build also needs the RF-DETR weights and `SIH_DETECTOR=rfdetr_nano`; that detector is **not
 validated for the pipeline**, so the demo clips may behave differently with it. **NOT VERIFIED** end to end.)
 
-**3. Download the demo kit**, Kaggle dataset `<kaggle-user>/bas-demo-kit`, in one of two ways:
+**3. Download the demo kit**, public Kaggle dataset `hemachandhara/bas-demo-kit`, in one of two ways:
 
 * *Kaggle CLI* (needs a Kaggle account and an API token configured by you; nothing in this repo touches them):
 
   ```powershell
-  kaggle datasets download <kaggle-user>/bas-demo-kit -p kit --unzip
+  kaggle datasets download hemachandhara/bas-demo-kit -p kit --unzip
   ```
 
-  (The command shape is from the Kaggle CLI's usual syntax and was **NOT VERIFIED**: the CLI was not installed here.
+  (The flags `-p` and `--unzip` are listed by `kaggle datasets download --help` of Kaggle CLI 2.2.4 [run, offline].
+  The download itself was **NOT VERIFIED**: nothing was uploaded or downloaded while preparing the kit.
   If `kaggle` is not on your PATH, `uv tool run kaggle datasets download ...` runs it, as the project did before.)
-* *Browser:* open `https://www.kaggle.com/datasets/<kaggle-user>/bas-demo-kit`, press **Download**, unzip the file
+* *Browser:* open `https://www.kaggle.com/datasets/hemachandhara/bas-demo-kit`, press **Download**, unzip the file
   into a folder called `kit` inside the repository.
 
 **4. Put every file where it belongs.** The kit is flat on purpose; this is where each file goes:
@@ -175,7 +189,7 @@ while preparing the kit: that the voice speaks these words is from the code and 
 
 Notes. On clip 2 two steps are tagged `flagged_uncertain` in the log (acted on, but low confidence) [run]. A
 **repeat** deviation (a step done twice) is not in the default order: the only validation repeat clip, x040, is
-8.6 s and its replay shows an omission, not the repeat; the repeat test clip x038 is held out (section 6). A correct
+8.6 s and its replay shows an omission, not the repeat; the repeat test clip x038 is held out (section 6; how to show it, section 12). A correct
 run on which the START press is **missed** (x022: a false "Step skipped: Start pressed") is the known limit; it is in
 the full dataset (section 8), not in the kit.
 
@@ -212,7 +226,7 @@ props was done for this kit. **Optional, not verified on the judge's hardware.**
 
 ## 8. Reproducing the dataset and the results
 
-Download the Kaggle dataset `<kaggle-user>/bas-dataset-full` (browser or `kaggle datasets download <kaggle-user>/bas-dataset-full -p full --unzip`,
+Download the public Kaggle dataset `hemachandhara/bas-dataset-full` (browser or `kaggle datasets download hemachandhara/bas-dataset-full -p full --unzip`,
 **NOT VERIFIED**) and copy its folders over the cloned repository, same names:
 
 ```
@@ -305,11 +319,51 @@ Numbers are copied from the named file; nothing is rounded up.
 | `reports/`, `runs/` | measured results; run scripts and manifests (videos are not in git) |
 | `weights/`, `data/`, `demo_videos/`, `kit_staging/`, `runs_out/`, `certs/` | git-ignored: models, datasets, clips, staged bundles, logs, TLS files |
 | `assets/` | `ASSETS.sha256`, the expected hashes of the demo kit |
-| `docs/` | `DATASET_CARD.md`, `KIT.md` (maintainer notes), `LICENSES.md`, `kit/build_kit.py` |
+| `LICENSE` | the MIT licence of the project code |
+| `docs/` | `DATASET_CARD.md`, `KIT.md` (maintainer notes, upload commands), `LICENSES.md`, `kit/build_kit.py` |
 | `tests/` | unit and integration tests; `contracts.py` is the typed contract; `AGENTS.md`, `context.md`, `IMPLEMENTATION_PLAN.md`, `ISSUES.md` are the working documents |
 
-**Licence.** The repository has no `LICENSE` file [repo]: **DECISION - Lead.** Third-party licences and the AGPL note: `docs/LICENSES.md`.
-**Credits.** `<team names and mentors>` (**DECISION - Lead**). **Contacts.** `<name, email>` (**DECISION - Lead**).
+**Licence.** Code: MIT (`LICENSE`). Footage and labels: CC BY 4.0, *Credit: Hemachandhar A and the SIH 2026 PS 26174 team*.
+Model weights keep their own licences (YOLO11n AGPL-3.0). Table, sources and the AGPL note: `docs/LICENSES.md`. Not legal advice.
+**Credits.** Hemachandhar A and the SIH 2026 PS 26174 team; mentors `<mentors - Lead to add>`.
+**Contacts.** `<name, email - Lead to add>` (no file in the repository states one).
+
+## 12. Known limitations of this demo build
+
+Verified in `ISSUES.md` (2026-10-07 S-K entry, findings 1 to 4, and the P2.7 / P1.5 entries) or by running the command, as
+tagged. Nothing here was fixed in this build: they are documented, not hidden.
+
+* **(a) The held-out guard is path based** [issues, S-K finding 1; run: reading `harness/live.py`]. A renamed copy of a
+  test clip plays **without** `--allow-heldout`. **Do not rename test clips.**
+* **(b) `python scripts/demo.py --check` without `--playlist` also tries camera 0** [issues, S-K finding 4; run]. On a machine
+  without a camera it fails. **Always pass `--playlist`** (as the commands above do).
+* **(c) A missing clip in a playlist is only a warning** [issues, S-K entry; run]: `warning: playlist: skipping '<clip>': file not
+  found`, and the show gets shorter. **Run `python scripts/verify_assets.py` first.**
+* **(d) Always use the gated start; do not use `--no-wait-for-dashboard`** [issues, S-K finding 2; run]. Without the idle warm-up
+  frame the first clip can raise a false omission alert (x015 and x016 each lost `red_out` and `red_in_tray` that way).
+* **(e) The demo has no repeat clip among the validation clips** [issues, S-K entry]. To show a repeat, x038 is a held-out
+  **test** clip, so it plays only with `--replay-run x038 --allow-heldout`. Plainly: **x038 belongs to the held-out test split;
+  it is shown as an example, it was never used for tuning, and the single test replay was done before it was ever shown.**
+  Checked against the record: the one test replay ran on 2026-10-04 at 11:25 [issues, P2.7 S-H2], before `scripts/demo.py` was
+  committed (14:13 the same day [repo, `git log`]) and before the clip was copied into the Lead's `demo_videos/` (file creation
+  time 2026-10-04 20:12 [run]). The only earlier use of x038 was five frames of a hand-landmarker timing smoke test on
+  2026-09-30, "no tuning, no accuracy claim" [issues].
+  * **The demo kit does not contain x038** (`runs/` is not in the kit; it lives in the full dataset, section 8). To get it:
+    download the full bundle, copy its `runs\` folder over the repository's `runs\` (you need `runs\x038\video.mp4`,
+    `runs\x038\script.json` and `runs\manifest.csv`; if the bundle arrived as zip files, unzip them in place first), then:
+
+    ```powershell
+    kaggle datasets download hemachandhara/bas-dataset-full -p full --unzip
+    Copy-Item full\runs\* runs\ -Recurse -Force
+    python scripts/demo.py --tls off --replay-run x038 --allow-heldout
+    ```
+
+    (All flags are listed by `python scripts/demo.py --help` [run]: `--replay-run RUN_ID`, `--allow-heldout`, `--tls`. The download and
+    the playback of x038 were **not run** while preparing this text.)
+* **(f) The START press is recognised only partly:** 8 of 10 held-out test runs match strictly (START excluded: 10 of 10)
+  [issues, P2.7; `reports/replay_test.json`]. One performer, one setup, no gloves [issues]. Tested on **Windows only**. Audio
+  and TLS in a real browser were **not verified** by the build agents (section 9).
+* **Advisory only:** the system observes, logs and alerts; it never controls or gates the experiment.
 
 ---
 
