@@ -285,3 +285,10 @@ def test_the_script_only_calls_the_existing_routes() -> None:
     called = set(re.findall(r'"(/(?:api/[\w/]+|video_feed))', comments_stripped(JS)))
     assert called <= set(API_ROUTES), called - set(API_ROUTES)
     assert Path(STATIC / "app.js").exists()
+
+
+def test_the_scrolling_log_has_a_dark_scrollbar_from_existing_tokens() -> None:
+    log_rule = next(body for sel, body in css_rules() if sel.strip() == ".log")
+    assert "scrollbar-color: var(--advisory-border) var(--panel);" in log_rule
+    # thumb #4a515a on track #1c2024, as specified. Recorded, not asserted at 3:1: see ISSUES.md.
+    print(f"scrollbar thumb on track {contrast('advisory-border', 'panel'):.2f}:1")

@@ -407,6 +407,8 @@ ol {
 .log {
   max-height: 312px;
   overflow-y: auto;
+  /* thumb on track, from existing tokens (a dark page must not get a light system scrollbar) */
+  scrollbar-color: var(--advisory-border) var(--panel);
 }
 
 .row {

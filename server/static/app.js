@@ -23,14 +23,8 @@
     },
     // One run's log. 404 means "no log written yet" (an idle run has none): not an error.
     log: function (runId) {
-      return fetch("/api/log?run_id=" + encodeURIComponent(runId)).then(function (response) {
-        if (response.status === 404) {
-          return { run_id: runId, entries: [] };
-        }
-        if (!response.ok) {
-          throw new Error("log request failed: " + response.status);
-        }
-        return response.json();
+      return getJson("/api/log?run_id=" + encodeURIComponent(runId), "log", true).then(function (body) {
+        return body || { run_id: runId, entries: [] };
       });
     },
     startRun: function () {
@@ -45,8 +39,42 @@
     },
   };
 
-  function getJson(path, what) {
-    return fetch(path).then(function (response) {
+  // The ONE place that calls fetch. Every request is given up after FETCH_TIMEOUT_MS (a connect to
+  // a dead port otherwise hangs for about 21 s on Windows) and a timeout rejects like any other
+  // failure. `accept` receives the Response and returns the value, or throws.
+  function request(path, options, what, accept) {
+    var controller = typeof AbortController === "function" ? new AbortController() : null;
+    var timer = setTimeout(function () {
+      if (controller) {
+        controller.abort();
+      }
+    }, FETCH_TIMEOUT_MS);
+    var init = options || {};
+    if (controller) {
+      init.signal = controller.signal;
+    }
+    return fetch(path, init)
+      .then(accept)
+      .then(
+        function (value) {
+          clearTimeout(timer);
+          return value;
+        },
+        function (err) {
+          clearTimeout(timer);
+          if (err && err.name === "AbortError") {
+            throw new Error(what + " request timed out");
+          }
+          throw err;
+        }
+      );
+  }
+
+  function getJson(path, what, emptyOn404) {
+    return request(path, null, what, function (response) {
+      if (emptyOn404 && response.status === 404) {
+        return null;
+      }
       if (!response.ok) {
         throw new Error(what + " request failed: " + response.status);
       }
@@ -55,7 +83,7 @@
   }
 
   function post(path) {
-    return fetch(path, { method: "POST" }).then(function (response) {
+    return request(path, { method: "POST" }, "run control", function (response) {
       if (response.status === 409) {
         // Another click (or another client) already changed the run state first: not a failure.
         // The poll that follows shows the server's actual state.
@@ -72,6 +100,9 @@
 
   // Must match contracts.DASHBOARD_POLL_MS.
   var POLL_MS = 500;
+  // Design choice (S-I1c-fix): give up any request after this long. Four times the poll period,
+  // far above a healthy loopback answer, far below the browser's own connect timeout.
+  var FETCH_TIMEOUT_MS = 2000;
   // A lost feed reconnects the video stream no faster than this.
   var VIDEO_RETRY_MS = 3000;
   var DASH = "—";
@@ -203,6 +234,8 @@
     // this run's /api/log entries (empty while idle) and whether run_completed has been seen
     log: [],
     logComplete: false,
+    // the last status request failed or timed out
+    unreachable: false,
   };
   var inflight = { experiment: false, log: false };
   var errors = { status: null, experiment: null, log: null };
@@ -304,14 +337,18 @@
     var idle = status.run_state === "idle";
     els.experimentName.textContent = model.experiment ? model.experiment.name : "";
     els.runId.textContent = status.run_id || DASH;
-    els.runState.textContent = STATE_LABEL[status.run_state] || status.run_state;
+    var stale = model.unreachable;
+    els.runState.textContent = stale ? DASH : STATE_LABEL[status.run_state] || status.run_state;
     // Processing rate: not shown while idle (nothing is being processed, and the server keeps the
-    // last run's number there).
-    els.fps.textContent = !idle && status.fps != null ? status.fps.toFixed(1) + " fps" : DASH;
+    // last run's number there) nor while the server cannot be reached.
+    els.fps.textContent =
+      !stale && !idle && status.fps != null ? status.fps.toFixed(1) + " fps" : DASH;
 
     clearChildren(els.feedOk);
     els.feedOk.className = "v feed-val";
-    if (idle) {
+    if (stale) {
+      els.feedOk.textContent = DASH; // unknown: no OK, no check icon, and no claim of a lost camera
+    } else if (idle) {
       // The gated start serves a held first frame and captures nothing until Start, so the
       // server's feed watchdog reports feed_ok = false by design; that is not a lost camera.
       els.feedOk.textContent = DASH;
@@ -431,7 +468,7 @@
     if (spokenEqualsDetail(entry)) {
       var spoken = el("div", "row-sp");
       spoken.appendChild(icon("speaker-sm", 14));
-      spoken.appendChild(el("span", "", "Spoken: “" + entry.detail + "”"));
+      spoken.appendChild(el("span", "", "Voice text: “" + entry.detail + "”"));
       body.appendChild(spoken);
     }
     row.appendChild(body);
@@ -599,37 +636,78 @@
 
   // ---- polling ----------------------------------------------------------------------------------
 
-  // Guards against out-of-order responses: if a slow poll resolves after a newer one already
-  // started, applying it would flash stale state back onto the page. Only the response to the
-  // most recently issued poll is ever rendered.
-  var pollSeq = 0;
+  // One status request at a time; the next poll is scheduled POLL_MS after the current one has
+  // settled (a response, a failure or the FETCH_TIMEOUT_MS timeout), so a server that hangs can
+  // neither pile up requests nor leave the page without an answer. Because requests no longer
+  // overlap, a response can never arrive out of order, and the old sequence guard is gone: it was
+  // what dropped every response while the server was slow (B1).
+  var pollInFlight = false;
+  var pollAgain = false;
+  var pollTimer = null;
+
+  function schedulePoll(delay) {
+    if (pollTimer !== null) {
+      clearTimeout(pollTimer);
+    }
+    pollTimer = setTimeout(poll, delay);
+  }
+
+  // A poll wanted now (after Start or Reset): runs at once, or right after the one in flight.
+  function pollSoon() {
+    if (pollInFlight) {
+      pollAgain = true;
+      return;
+    }
+    poll();
+  }
+
+  function pollSettled() {
+    pollInFlight = false;
+    var again = pollAgain;
+    pollAgain = false;
+    schedulePoll(again ? 0 : POLL_MS);
+  }
 
   function poll() {
-    var seq = ++pollSeq;
-    api.status().then(
-      function (status) {
-        if (seq !== pollSeq) {
-          return; // a newer poll already started; this response is stale
-        }
-        errors.status = null;
-        if (status.run_id !== model.runId) {
-          model.runId = status.run_id;
-          model.log = [];
-          model.logComplete = false;
-        }
-        model.status = status;
-        showErrors();
-        render();
-        fetchRunData(status);
-      },
-      function (err) {
-        if (seq !== pollSeq) {
-          return;
-        }
-        errors.status = unreachable(err);
-        showErrors();
-      }
-    );
+    if (pollTimer !== null) {
+      clearTimeout(pollTimer);
+      pollTimer = null;
+    }
+    if (pollInFlight) {
+      return;
+    }
+    pollInFlight = true;
+    api
+      .status()
+      .then(onStatus, onStatusError)
+      .then(pollSettled, function (err) {
+        pollSettled(); // a rendering bug must not stop the polling; it still surfaces in the console
+        throw err;
+      });
+  }
+
+  function onStatus(status) {
+    errors.status = null;
+    model.unreachable = false;
+    if (status.run_id !== model.runId) {
+      model.runId = status.run_id;
+      model.log = [];
+      model.logComplete = false;
+    }
+    model.status = status;
+    showErrors();
+    render();
+    fetchRunData(status);
+  }
+
+  // The last good state stays on screen, except the three live values (State, Feed, Processing),
+  // which become dashes: they would otherwise read as current. The page cannot tell a dead server
+  // from a lost camera, so it does not claim the camera is lost.
+  function onStatusError(err) {
+    errors.status = unreachable(err);
+    model.unreachable = true;
+    showErrors();
+    render();
   }
 
   // The experiment definition once per run; the run's log on each poll while a run exists
@@ -687,12 +765,12 @@
 
   function postRunControl(call, button) {
     // Disabled immediately so a fast double-click can't fire the request twice; render() (via the
-    // poll() below) sets the real enabled/disabled state from the server's actual run_state once
+    // pollSoon() below) sets the real enabled/disabled state from the server's actual run_state once
     // it responds, on both the success and the "already in that state" paths.
     button.disabled = true;
     call()
       .then(function () {
-        poll();
+        pollSoon();
       })
       .catch(function (err) {
         errors.status = unreachable(err);
@@ -712,5 +790,4 @@
   els.video.addEventListener("error", onVideoError);
 
   poll();
-  setInterval(poll, POLL_MS);
 })();

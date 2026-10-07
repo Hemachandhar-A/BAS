@@ -149,8 +149,8 @@ def test_event_log_rows_use_the_log_detail_verbatim(tmp_path: Path) -> None:
         f"Confirmed: {NAME['red_out']}",
         f"Confirmed: {NAME['red_in_tray']}",
     ]
-    # Never an invented spoken line: confirmations and run start have none.
-    assert not any("Spoken" in r["full"] for r in listed)
+    # Never an invented voice-text line: confirmations and run start have none.
+    assert not any("Voice text" in r["full"] for r in listed)
     # The amber tag only where confidence_tag is flagged_uncertain (the 4th entry).
     assert ["Low confidence" in r["full"] for r in listed] == [False, False, False, True]
 
@@ -239,7 +239,7 @@ def test_a_deviation_shows_the_alert_banner_a_red_row_and_a_skipped_step(tmp_pat
     assert text(snap, "deviation-time") == "Video time 0:12.4"
     last = rows(snap, "event-log")[-1]
     assert "is-bad" in last["cls"]
-    assert "Spoken: “Step skipped: Start pressed”" in last["full"]
+    assert "Voice text: “Step skipped: Start pressed”" in last["full"]
     listed = step_rows(snap)
     assert listed[4]["status"] == "Skipped" and "is-bad" in listed[4]["status_cls"]
     assert listed[4]["time"] == "—"
@@ -277,7 +277,7 @@ def test_a_repeat_is_never_labelled_spoken(tmp_path: Path) -> None:
     snap = page(tmp_path, w, [{}])["snapshots"][1]
     assert text(snap, "deviation-label") == "Deviation"
     assert text(snap, "deviation-msg") == f"Repeated: {NAME['red_out']}"
-    assert "Spoken" not in text(snap, "event-log")
+    assert "Voice text" not in text(snap, "event-log")
 
 
 # --- completed ----------------------------------------------------------------------------------
@@ -308,8 +308,8 @@ def test_completed_with_a_skipped_step_shows_the_summary(tmp_path: Path) -> None
     assert snap["btn-start"]["disabled"] is False and snap["btn-reset"]["disabled"] is False
     assert "seg-current" not in " ".join(seg_classes(snap))
     assert not any("is-current" in r["row_cls"] for r in step_rows(snap))
-    # The completion row repeats the spoken phrase (the engine always speaks it).
-    assert "Spoken" in rows(snap, "event-log")[-1]["full"]
+    # The completion row repeats the voice text (the engine always speaks it).
+    assert "Voice text" in rows(snap, "event-log")[-1]["full"]
     # Order similarity is not exposed by any route, so the page must not show or compute it.
     everything = " ".join(node["full"] for node in snap.values())
     assert "similarity" not in everything.lower() and "%" not in everything
@@ -400,7 +400,8 @@ def test_a_failed_status_request_shows_the_error_banner_and_recovers(tmp_path: P
     assert ok["error-banner"]["hidden"] is True
     assert failed["error-banner"]["hidden"] is False
     assert text(failed, "error-banner") == "Could not reach the server: status request failed: 500"
-    assert text(failed, "run-state") == "Running"  # the last good state stays on screen
+    assert text(failed, "run-state") == "—"  # S-I1c-fix: the live values are dashes...
+    assert text(failed, "step-no") == text(ok, "step-no")  # ...the last good rest stays
     assert recovered["error-banner"]["hidden"] is True
 
 

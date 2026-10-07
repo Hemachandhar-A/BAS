@@ -49,7 +49,7 @@ def test_autostart_posts_once_after_500_ms_when_idle(tmp_path: Path) -> None:
     assert (
         text(snap, "start-banner") == "waiting to start" and snap["start-banner"]["hidden"] is False
     )
-    assert 500 in got["intervals"]  # the status poll interval
+    assert 500 in got["poll_delays"]  # the next status poll is scheduled POLL_MS after the last
 
 
 def test_autostart_does_not_start_a_run_that_is_already_going(tmp_path: Path) -> None:
